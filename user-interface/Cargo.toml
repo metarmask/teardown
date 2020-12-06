@@ -1,0 +1,10 @@
+[package]
+name = "teardown-converter"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+teardown-bin-format = { path = "../bin-format" }
+teardown-editor-format = { path = "../editor-format" }
+structopt = "0.3"
+vox = { path = "../../rust-vox" }

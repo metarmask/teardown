@@ -1,0 +1,8 @@
+/target
+/example-input
+perf.data
+perf.data.old
+expanded.rs
+debug.json
+# because the crate mostly contains libraries
+Cargo.lock

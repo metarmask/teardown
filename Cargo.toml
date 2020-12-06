@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "bin-format",
+    "editor-format",
+    "user-interface",
+    "blender/rust-addon-library",
+    "blender/rust-addon-installer"
+]

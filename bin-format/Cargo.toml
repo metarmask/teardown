@@ -1,0 +1,23 @@
+[package]
+name = "teardown-bin-format"
+version = "0.6.1"
+edition = "2018"
+
+[dependencies]
+structr = { path = "../../structr" }
+flate2 = { version = "1.0", features = ["zlib"], default-features = false }
+num-traits = "0.2"
+base64 = "0.13"
+owning_ref = "0.4"
+approx = "0.4"
+
+# optional
+building-blocks = { version = "0.5", features = ["nalgebra"], optional = true }
+serde_crate = { version = "1.0", features = ["derive"], package = "serde", optional = true }
+serde_bytes = { version = "0.11", optional = true }
+nalgebra = { version = "0.25", optional = true }
+
+[features]
+mesh = ["building-blocks"]
+convert_nalgebra = ["nalgebra"]
+serde = ["serde_bytes", "serde_crate"]
