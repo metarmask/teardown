@@ -8,5 +8,5 @@ teardown-bin-format = { path = "../bin-format", features = ["convert_nalgebra"] 
 building-blocks = { version = "0.5", features = ["nalgebra"] }
 quick-xml = { version = "0.22", features = ["serialize"] }
 nalgebra = { version = "0.25" }
-vox = { path = "../../rust-vox" }
+vox = { git = "https://github.com/metarmask/vox-format" }
 approx = "0.4"

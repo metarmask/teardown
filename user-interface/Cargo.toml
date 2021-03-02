@@ -7,4 +7,4 @@ edition = "2018"
 teardown-bin-format = { path = "../bin-format" }
 teardown-editor-format = { path = "../editor-format" }
 structopt = "0.3"
-vox = { path = "../../rust-vox" }
+vox = { git = "https://github.com/metarmask/vox-format" }

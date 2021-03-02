@@ -4,7 +4,7 @@ version = "0.6.1"
 edition = "2018"
 
 [dependencies]
-structr = { path = "../../structr" }
+structr = { git = "https://github.com/metarmask/structr" }
 flate2 = { version = "1.0", features = ["zlib"], default-features = false }
 num-traits = "0.2"
 base64 = "0.13"
