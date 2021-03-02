@@ -1,4 +1,5 @@
 **Tools for parsing and converting the binary format for the Teardown game.**
+![Marina loaded in editor](https://user-images.githubusercontent.com/7348146/109703505-d511f700-7b95-11eb-99ad-538edb4df014.png)
 
 ## Known issues
 * Rotation fails for shapes which are rotated on three axes.
