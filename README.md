@@ -18,5 +18,5 @@
 ## Components
 * [Parsing of the binary format](bin-format)
 * [Command line/user interface to many of the functions of this repository](user-interface)
-* [Library for importing saves into the editor](editor-xml)
+* [Library for importing saves into the editor](editor-format)
 * [Blender add-on for importing saves](blender)
