@@ -10,6 +10,7 @@ use teardown_editor_format::write_scene;
 #[derive(StructOpt)]
 enum Subcommand {
     ShowVox { path: PathBuf },
+    PrintEnv { path: PathBuf },
     Convert { path: PathBuf, mod_folder: PathBuf, level_name: String }
 }
 
@@ -34,6 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Subcommand::Convert { path, mod_folder, level_name } => {
             let scene = parse_file(path)?;
             write_scene(&scene, mod_folder, &level_name)?;
+        }
+        Subcommand::PrintEnv { path } => {
+            let scene = parse_file(path)?;
+            println!("{:?}", scene.environment);
         }
     }
     Ok(())
