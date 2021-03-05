@@ -1,4 +1,4 @@
-#![feature(array_map, array_chunks, iterator_fold_self)]
+#![feature(array_map, array_chunks)]
 use std::{collections::hash_map::DefaultHasher, error::Error, hash::{Hash, Hasher}, io::{self, Cursor}, path::Path};
 
 use flate2::read::ZlibDecoder;

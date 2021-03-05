@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, ops::Mul, slice::ArrayChunks, unimplemented};
+use std::{collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, slice::ArrayChunks, unimplemented};
 use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 #[cfg(feature="serde")]
@@ -1033,7 +1033,7 @@ impl<'p> Parse<'p> for VoxelData<'p> {
     fn parse<'a>(parser: &'a mut Parser<'p>) -> Result<Self, ParseError<'p>>
     where 'p: 'a {
         let size: [u32; 3] = parser.parse()?;
-        let volume = size.iter().copied().fold_first(Mul::mul).unwrap();
+        let volume = size[0] * size[1] * size[2];
         Ok(if volume == 0 {
             Self { size, compressed_voxel_indices: &[] }
         } else {
