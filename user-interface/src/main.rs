@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Subcommand::PrintEnv { path } => {
             let scene = parse_file(path)?;
-            println!("{:?}", scene.environment);
+            println!("{:#?}", scene.environment);
         }
     }
     Ok(())
