@@ -3,7 +3,7 @@ use std::{collections::HashSet, convert::TryInto, error::Error, f32::consts::TAU
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{Writer, events::{BytesStart, Event}};
-use teardown_bin_format::{Entity, EntityKind, EntityKindVariants, Environment, Light, MaterialKind, PaletteIndex, Rgba, Scene, Transform, Vehicle, VehicleProperties, VoxelData, compute_hash_str};
+use teardown_bin_format::{Entity, EntityKind, EntityKindVariants, Environment, Exposure, Light, MaterialKind, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, VoxelData, compute_hash_str, environment::{self, Fog, Skybox, Sun}};
 use vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel};
 
 pub fn voxel_data_to_vox_node(voxel_data: &VoxelData<'_>) -> Node {
@@ -31,22 +31,94 @@ trait ToXMLAttributes {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)>;
 }
 
+fn flatten_attrs(deep_attrs: Vec<Vec<(&'static str, String)>>) -> Vec<(&'static str, String)> {
+    let mut flattened = Vec::new();
+    for mut attrs in deep_attrs {
+        flattened.append(&mut attrs);
+    }
+    flattened
+}
+
+impl ToXMLAttributes for Fog {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("fogColor", join_as_strings(self.color.0.iter())),
+            ("fogParams", join_as_strings([self.start, self.start + self.distance, self.amount, self.exponent].iter()))
+        ]
+    }
+}
+
+impl ToXMLAttributes for Exposure {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("exposure", join_as_strings([self.min, self.max].iter())),
+            ("brightness", self.brightness_goal.to_string()),
+        ]
+    }
+}
+
+impl ToXMLAttributes for Skybox<'_> {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        flatten_attrs(vec![
+            vec![
+                ("skybox", self.texture.to_string()),
+                ("skyboxtint", join_as_strings(self.tint.0.iter())),
+                ("skyboxbright", self.brightness.to_string()),
+                ("skyboxrot", self.rotation.to_string()),
+                ("ambient", self.ambient_light.to_string()),
+            ],
+            self.sun.to_xml_attrs()
+        ])
+    }
+}
+
+impl ToXMLAttributes for Sun {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("sunBrightness", self.brightness.to_string()),
+            ("sunColorTint", join_as_strings(self.tint.0.iter())),
+            ("sunDir", join_as_strings(self.direction.iter())),
+            ("sunSpread", self.spread.to_string()),
+            ("sunLength", self.max_shadow_length.to_string()),
+            ("sunFogScale", self.fog_scale.to_string()),
+            ("sunGlare", self.glare.to_string()),
+        ]
+    }
+}
+
+impl ToXMLAttributes for environment::Water {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("wetness", self.wetness.to_string()),
+            ("puddleamount", self.puddle_coverage.to_string()),
+            ("puddlesize", self.puddle_size.to_string()),
+            ("rain", self.rain.to_string()),
+        ]
+    }
+}
+
+impl ToXMLAttributes for (&'static str, Sound<'_>) {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![(self.0, join_as_strings([self.1.path, self.1.volume.to_string().as_ref()].iter()))]
+    }
+}
+
 impl<'a> WriteXML for Environment<'a> {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> XMLResult<()> {
-        let start = BytesStart::owned_name("environment")
-            .with_attributes(vec![
-                ("skybox", self.skybox.texture),
-                ("skyboxtint", &join_as_strings(self.skybox.tint.0.iter())),
-                ("skyboxbright", self.skybox.brightness.to_string().as_ref()),
-                ("skyboxrot", self.skybox.rotation.to_string().as_ref()),
-                ("ambient", self.ambient_from_skybox.to_string().as_ref()),
-                ("fogColor", &join_as_strings(self.fog.color.0.iter())),
-                ("fogParams", &join_as_strings([self.fog.start, self.fog.end, self.fog.amount, self.fog.exponent].iter())),
-                ("sunBrightness", self.sun.brightness.to_string().as_ref())
-            ].into_iter());
-            
-        writer.write_event(Event::Empty(start.clone()))?;
-        
+        writer.write_event(Event::Empty(
+            BytesStart::borrowed_name("environment".as_bytes())
+            .with_attributes(flatten_attrs(vec![
+                self.skybox.to_xml_attrs(),
+                self.exposure.to_xml_attrs(),
+                self.fog.to_xml_attrs(),
+                self.water.to_xml_attrs(),
+                vec![
+                    ("nightlight", self.nightlight.to_string()),
+                    ("ambience", join_as_strings([self.ambience.path, self.ambience.volume.to_string().as_ref()].iter())),
+                    ("slippery", self.slippery.to_string())],
+                self.fog.to_xml_attrs()
+            ]).iter().map(|(k, v)| (*k, v.as_ref())))
+        ))?;
         Ok(())
     }
 }
@@ -246,7 +318,7 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             arm_rot: _,
             ..
         }) => {
-            ("not-vehicle", vec![
+            ("body", vec![
                 ("driven", "false".into()),
                 ("sound", format!("{} {}", sound.name, sound.pitch)),
                 ("spring", spring.to_string()),

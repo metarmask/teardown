@@ -18,11 +18,6 @@ pub struct Scene<'a> {
     pub spawnpoint: Transform,
     pub player: Player,
     pub environment: Environment<'a>,
-    // Maybe timer?
-    #[doc(hidden)]
-    pub z_f32_eq_1: f32,
-    #[doc(hidden)]
-    pub z_u32_len: u32,
     #[structr(len="u32")]
     pub boundary_vertices: Vec::<BoundaryVertex>,
     #[structr(len="u32")]
@@ -82,13 +77,6 @@ pub mod light {
         pub glare: f32,
     }
     
-    #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
-    pub struct Sound<'a> {
-        pub path: &'a str,
-        pub volume: f32,
-    }
-    
     #[derive(Debug, Clone, PartialEq, Eq, Parse)]
     #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     #[repr(u8)]
@@ -98,7 +86,7 @@ pub mod light {
         Area = 3,
     }
 }
-pub use light::{Light, Kind as LightKind, Sound as LightSound};
+pub use light::{Light, Kind as LightKind};
 
 pub mod joint {
     use super::*;
@@ -531,47 +519,73 @@ pub struct Script<'a> {
 
 #[derive(Debug, Clone, Parse)]
 #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
-pub struct Environment<'a> {
-    pub skybox: Skybox<'a>,
-    #[doc(hidden)]
-    pub z_f32_3_sun_channel_intensity: [f32; 3],
-    pub sun: Sun,
-    #[doc(hidden)]
-    pub z_u8: u8,
-    pub ambient_from_skybox: f32,
-    pub exposure: Exposure,
-    #[doc(hidden)]
-    pub z2_f32: f32,
-    pub fog: Fog,
-    #[doc(hidden)]
-    pub z_f32_3: [f32; 3],
-    #[doc(hidden)]
-    pub z_u8_5: [u8; 5],
-    pub ambience_sound_path: &'a str,
+pub struct Sound<'a> {
+    pub path: &'a str,
+    pub volume: f32,
 }
 
-#[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
-pub struct Sun {
-    pub color_tint: Rgba,
-    pub direction: [f32; 3],
-    pub brightness: f32,
-    #[doc(hidden)]
-    pub z_f32: f32,
-    pub length: f32,
-    pub fog_scale: f32,
-    pub glare: f32,
-}
+pub mod environment {
+    use super::*;
 
-#[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
-pub struct Fog {
-    pub color: Rgba,
-    pub start: f32,
-    pub end: f32,
-    pub amount: f32,
-    pub exponent: f32,
+    #[derive(Debug, Clone, Parse)]
+    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+    pub struct Environment<'a> {
+        pub skybox: Skybox<'a>,
+        pub exposure: Exposure,
+        pub fog: Fog,
+        pub water: Water,
+        pub nightlight: bool,
+        pub ambience: Sound<'a>,
+        pub slippery: f32,
+    }
+
+    #[derive(Debug, Clone, Parse)]
+    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+    pub struct Skybox<'a> {
+        pub texture: &'a str,
+        pub tint: Rgb,
+        pub brightness: f32,
+        /// In radians
+        pub rotation: f32,
+        pub sun: Sun,
+        #[doc(hidden)]
+        pub z_u8: u8,
+        pub ambient_light: f32
+    }
+
+    #[derive(Debug, Clone, Parse)]
+    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+    pub struct Sun {
+        pub tint_brightness: [f32; 3],
+        pub tint: Rgba,
+        pub direction: [f32; 3],
+        pub brightness: f32,
+        pub spread: f32,
+        pub max_shadow_length: f32,
+        pub fog_scale: f32,
+        pub glare: f32,
+    }
+
+    #[derive(Debug, Clone, Parse)]
+    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+    pub struct Fog {
+        pub color: Rgba,
+        pub start: f32,
+        pub distance: f32,
+        pub amount: f32,
+        pub exponent: f32,
+    }
+
+    #[derive(Debug, Clone, Parse)]
+    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+    pub struct Water {
+        pub wetness: f32,
+        pub puddle_coverage: f32,
+        pub puddle_size: f32,
+        pub rain: f32,
+    }
 }
+pub use environment::Environment;
 
 #[derive(Debug, Clone, Parse)]
 #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
@@ -635,6 +649,7 @@ pub struct Wheel<'a> {
 pub struct Exposure {
     pub min: f32,
     pub max: f32,
+    pub brightness_goal: f32,
 }
 
 #[derive(Debug, Clone, Parse)]
@@ -858,16 +873,6 @@ pub struct Screen<'a> {
     pub fx_glitch: f32,
     #[doc(hidden)]
     pub z_u8_4: [u8; 4],
-}
-
-#[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
-pub struct Skybox<'a> {
-    pub texture: &'a str,
-    pub tint: Rgb,
-    pub brightness: f32,
-    /// In radians
-    pub rotation: f32,
 }
 
 #[derive(Debug, Clone)]
