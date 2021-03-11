@@ -214,16 +214,19 @@ pub enum MaterialKind {
     None = 0,
     Glass = 1,
     Wood = 2,
+    /// Also known as concrete and brick
     Masonry = 3,
     Plaster = 4,
+    /// Also known as weak metal
     Metal = 5,
     HeavyMetal = 6,
     Rock = 7,
     Dirt = 8,
+    /// Also known as grass
     Foliage = 9,
-    Unknown10 = 10, // One of these are concrete
-    Unknown11 = 11,
-    Unknown12 = 12,
+    Plastic = 10,
+    HardMetal = 11,
+    HardMasonry = 12,
     Unknown13 = 13,
     Unphysical = 14
 }
