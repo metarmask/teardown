@@ -134,9 +134,73 @@ impl ToXMLAttributes for Transform {
     }
 }
 
-pub fn write_scene<P: AsRef<Path>>(scene: &Scene, mod_dir: P, name: &str) -> Result<(), Box<dyn Error>> {
+#[derive(Default)]
+pub struct VoxStore {
+    hashed_vox_dir: Option<PathBuf>,
+    files: HashMap<String, VoxFile>,
+    dirty: HashSet<String>
+}
+
+impl VoxStore {
+    fn set_palette_dirty(&mut self, palette: &Palette) {
+        let hash_str = compute_hash_str(&palette.materials);
+        self.dirty.insert(hash_str);
+    }
+
+    fn file_for_palette(&mut self, palette: &Palette) -> Result<&mut VoxFile, Box<dyn Error>> {
+        let hash_str = compute_hash_str(&palette.materials);
+        Ok(match self.files.entry(hash_str.clone()) {
+            Entry::Occupied(occupied) => {
+                occupied.into_mut()
+            }
+            Entry::Vacant(vacant) => {
+                let path = self.hashed_vox_dir.as_mut().expect("no dir for hashed .vox").join(format!("{}.vox", &hash_str));
+                vacant.insert(if path.exists() {
+                    vox::semantic::parse_file(&path)?
+                } else {
+                    self.dirty.insert(hash_str);
+                    palette_to_vox(&palette.materials)
+                })
+            }
+        })
+    }
+
+    fn write_dirty(&mut self) -> Result<(), Box<dyn Error>> {
+        for dirty in self.dirty.iter() {
+            let file = self.files.remove(dirty).expect("Dirty vox store file was never accessed");
+            let path = self.hashed_vox_dir.as_mut().expect("no dir for hashed .vox").join(format!("{}.vox", dirty));
+            let mut vox_writer = BufWriter::new(File::create(&path)?);
+            file.write(&mut vox_writer)?;
+        }
+        self.dirty.clear();
+        Ok(())
+    }
+}
+
+impl Drop for VoxStore {
+    fn drop(&mut self) {
+        self.write_dirty().expect("while dropping VoxStore")
+    }
+}
+
+pub fn write_scene<P: AsRef<Path>, A: AsRef<Path>>(scene: &Scene, teardown_dir: P, mod_dir: A, name: &str, vox_store: &mut VoxStore) -> Result<(), Box<dyn Error>> {
     let mod_dir = mod_dir.as_ref();
     let level_dir = mod_dir.join(name);
+    let vox_dir = teardown_dir.as_ref().join("data").join("vox");
+    if !vox_dir.exists() {
+        return Err("data/vox didn't exist in teardown_dir".into())
+    }
+    let hashed_vox_dir = vox_dir.join("hash");
+    fs::create_dir_all(&hashed_vox_dir)?;
+    fs::create_dir_all(mod_dir)?;
+    if let Some(existing) = &vox_store.hashed_vox_dir {
+        if *existing != hashed_vox_dir {
+            return Err("Vox stored used for two different vox locations".into())
+        }
+    } else {
+        vox_store.hashed_vox_dir = Some(hashed_vox_dir);
+    }
+    
     if let Err(err) = fs::create_dir(&level_dir) {
         if err.kind() != ErrorKind::AlreadyExists { return Err(err.into()) }
     }
@@ -155,86 +219,85 @@ pub fn write_scene<P: AsRef<Path>>(scene: &Scene, mod_dir: P, name: &str) -> Res
     }
     xml_writer.write_event(Event::End(end))?;
     for (i, palette) in scene.palettes.iter().enumerate() {
-        let vox = palette_to_vox(scene, i);
-        let file_name = format!("{}.vox", compute_hash_str(&palette.materials));
-        let mut vox_writer = BufWriter::new(File::create(level_dir.join(file_name))?);
-        vox.write(&mut vox_writer)?;
+        let vox = vox_store.file_for_palette(palette)?;
+        if insert_shapes_to_vox(scene, i, vox) {
+            vox_store.set_palette_dirty(palette);
+        }
     }
     Ok(())
 }
 
-fn palette_to_vox(scene: &Scene, palette_index: usize) -> VoxFile {
-    let mut file = VoxFile::new();
-    let td_materials = &scene.palettes[palette_index as usize].materials;
-    let mut vox_materials = Vec::new();
-    for material in td_materials.iter().skip(1) {
-        let Rgba([r, g, b, a]) = material.rgba;
-        let mut vox_mat = VoxMaterial::new_color([r, g, b, a].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
-        vox_mat.ior = Some(0.3);
-        vox_mat.spec_p = Some(0.);
-        vox_mat.weight = Some(if material.shinyness > 0.0 {
-            material.reflectivity
+fn convert_material(material: &Material) -> VoxMaterial {
+    let Rgba([r, g, b, a]) = material.rgba;
+    let mut vox_mat = VoxMaterial::new_color([r, g, b, a].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
+    vox_mat.ior = Some(0.3);
+    vox_mat.spec_p = Some(0.);
+    vox_mat.weight = Some(if material.shinyness > 0.0 {
+        material.reflectivity
+    } else {
+        0.0
+    });
+    vox_mat.rough = Some(1.0 - material.metalness);
+    vox_mat.kind = if vox_mat.rgba[3] < 255 {
+        vox_mat.alpha = Some(0.5);
+        VoxMaterialKind::Glass
+    } else if material.emission > 0.0 {
+        VoxMaterialKind::Emit
+    } else {
+        // vox_mat.att = Some(0.);
+        // vox_mat.g1 = Some(-0.5);
+        // vox_mat.ldr = Some(0.);
+        // vox_mat.flux = Some(0.);
+        // vox_mat.spec = Some(1.);
+        // vox_mat.g0 = Some(-0.5);
+        // vox_mat.gw = Some(0.7);
+        // vox_mat.metal = Some(0.0); // !?
+        if material.metalness == 0.0 && material.reflectivity == 0.0 {
+            VoxMaterialKind::Diffuse
         } else {
-            0.0
-        });
-        vox_mat.rough = Some(1.0 - material.metalness);
-        vox_mat.kind = if vox_mat.rgba[3] < 255 {
-            vox_mat.alpha = Some(0.5);
-            VoxMaterialKind::Glass
-        } else if material.emission > 0.0 {
-            VoxMaterialKind::Emit
-        } else {
-            // vox_mat.att = Some(0.);
-            // vox_mat.g1 = Some(-0.5);
-            // vox_mat.ldr = Some(0.);
-            // vox_mat.flux = Some(0.);
-            // vox_mat.spec = Some(1.);
-            // vox_mat.g0 = Some(-0.5);
-            // vox_mat.gw = Some(0.7);
-            // vox_mat.metal = Some(0.0); // !?
-            if material.metalness == 0.0 && material.reflectivity == 0.0 {
-                VoxMaterialKind::Diffuse
+            // To match the original files. Is interpreted as metal if together with spec_p and weight.
+            if material.shinyness > 0.0 {
+                VoxMaterialKind::Metal
             } else {
-                // To match the original files. Is interpreted as metal if together with spec_p and weight.
-                if material.shinyness > 0.0 {
-                    VoxMaterialKind::Metal
-                } else {
-                    VoxMaterialKind::Plastic
-                }
+                VoxMaterialKind::Plastic
             }
-        };
-        // vox_mat.spec = Some(material.shinyness);
-        // vox_mat.att = Some(material.reflectivity);
-        vox_materials.push(vox_mat);
-    }
-    file.set_palette(&vox_materials).unwrap();
-    // let syntaxical = vox::syntax::VoxFile::try_from(file.clone()).unwrap();
-    // for chunk in syntaxical.main_chunk.children.iter() {
-    //     match &chunk.kind {
-    //         ChunkKind::Material(material) => {
-    //             println!("{:?}", material);
-    //         },
-    //         _ => {}
-    //     }
-    // }
-    let mut voxel_data_set = HashSet::new();
+        }
+    };
+    // vox_mat.spec = Some(material.shinyness);
+    // vox_mat.att = Some(material.reflectivity);
+    vox_mat
+}
+
+fn insert_shapes_to_vox(scene: &Scene, palette_index: usize, vox_file: &mut VoxFile) -> bool {
+    let mut voxel_data_set = HashMap::new();
     for entity in scene.iter_entities() {
         if let EntityKind::Shape(shape) = &entity.kind {
             if shape.palette as usize == palette_index {
-                voxel_data_set.insert(&shape.voxel_data);
-                if entity.desc == "printthis" {
-                    println!("{:#?}", td_materials.iter().filter(|mat| mat.kind != MaterialKind::None).collect::<Vec<_>>());
-                }
+                let hash_str = compute_hash_str(&shape.voxel_data);
+                voxel_data_set.entry(hash_str).or_insert(&shape.voxel_data);
             }
         }
     }
-    for voxel_data in voxel_data_set {
-        let mut node = voxel_data_to_vox_node(voxel_data);
-        node.name = Some(compute_hash_str(voxel_data));
-        file.root.add(node);
+    for node in vox_file.root.children_mut().as_deref().unwrap() {
+        if let Some(name) = &node.name {
+            voxel_data_set.remove(name);
+        }
     }
+    if voxel_data_set.len() == 0 { return false }
+    for (hash_str, voxel_data) in voxel_data_set {
+        let mut node = voxel_data_to_vox_node(voxel_data);
+        node.name = Some(hash_str);
+        vox_file.root.add(node);
+    }
+    true
+}
+
+fn palette_to_vox(td_materials: &[Material; 256]) -> VoxFile {
+    let mut file = VoxFile::new();
+    file.set_palette(&td_materials.iter().skip(1).map(convert_material).collect::<Vec<_>>()).unwrap();
     file
 }
+
 fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> String {
     let mut item_strings = iter.into_iter().map(|element| element.to_string());
     let mut joined = if let Some(first) = item_strings.next() {
@@ -251,19 +314,19 @@ fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> String {
 
 pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent_transform: &Transform) -> XMLResult<()> {
     let mut is_voxbox = false;
-    println!("{:>8} {:<8}: {:+05.1?} {:+05.1?}",
-        format!("{:?}", EntityKindVariants::from(&entity.kind)),
-        if let Some(tag) = entity.tags.0.iter().next() { tag.0 } else { "" },
-        entity.transform().map(ToOwned::to_owned).map(|mut x| {
-            x.pos = x.pos.map(|dim| dim * 10.);
-            x
-        }),
-        {
-            let mut trans = parent_transform.clone();
-            trans.pos = trans.pos.map(|dim| dim * 10.);
-            trans
-        }
-    );
+    // println!("{:>8} {:<8}: {:+05.1?} {:+05.1?}",
+    //     format!("{:?}", EntityKindVariants::from(&entity.kind)),
+    //     if let Some(tag) = entity.tags.0.iter().next() { tag.0 } else { "" },
+    //     entity.transform().map(ToOwned::to_owned).map(|mut x| {
+    //         x.pos = x.pos.map(|dim| dim * 10.);
+    //         x
+    //     }),
+    //     {
+    //         let mut trans = parent_transform.clone();
+    //         trans.pos = trans.pos.map(|dim| dim * 10.);
+    //         trans
+    //     }
+    // );
     let (name, mut kind_attrs) = match &entity.kind {
         EntityKind::Body(_) => {
             ("body", vec![])
