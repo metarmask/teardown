@@ -1,25 +1,23 @@
 #![feature(array_map)]
-use std::{collections::HashSet, convert::TryInto, error::Error, f32::consts::TAU, fs::{self, File}, io::{Write, BufWriter, ErrorKind}, path::Path};
+use std::{collections::{HashMap, HashSet, hash_map::Entry}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, io::{BufWriter, ErrorKind, Write}, path::{Path, PathBuf}};
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{Writer, events::{BytesStart, Event}};
-use teardown_bin_format::{Entity, EntityKind, EntityKindVariants, Environment, Exposure, Light, MaterialKind, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, VoxelData, compute_hash_str, environment::{self, Fog, Skybox, Sun}};
+use teardown_bin_format::{Entity, EntityKind, Environment, Exposure, Light, Material, Palette, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, VoxelData, compute_hash_str, environment::{self, Fog, Skybox, Sun}};
 use vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel};
 
 pub fn voxel_data_to_vox_node(voxel_data: &VoxelData<'_>) -> Node {
     let mut voxels = Vec::new();
-    if voxel_data.size.iter().all(|&dim| dim < 256) {
-        for ([x, y, z], palette_index) in voxel_data.iter() {
-            let coord = [x, y, z];
+    for (coord, palette_index) in voxel_data.iter() {
+        if let Ok(pos) = coord.iter().copied().map(TryInto::try_into).collect::<Result<Vec<_>, _>>() {
             voxels.push(Voxel {
-                pos: coord.iter().copied().map(TryInto::try_into).collect::<Result<Vec<_>, _>>().unwrap().try_into().unwrap(),
+                pos: <[u8; 3]>::try_from(pos).unwrap(),
                 index: palette_index,
             });
         }
     }
     let [x, y, z] = voxel_data.size.map(|x| (x as i32) / 2);
-    // 
-    let node = Node::new([x, y-1, z], Model::new(voxel_data.size, voxels));
+    let node = Node::new([x, y-1, z], Model::new(voxel_data.size.map(|dim| dim.min(256)), voxels));
     node
 }
 
@@ -274,15 +272,14 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             let mut kind_attrs = vec![
                 ("texture", format!("{} {}", shape.texture_tile, shape.texture_weight))
             ];
-            let xml_tag = if shape.voxel_data.size.iter().any(|&dim| dim > 256) {
+            let xml_tag = if false && shape.voxel_data.size.iter().any(|&dim| dim > 256) {
                 kind_attrs.push(("size", join_as_strings(shape.voxel_data.size.iter())));
                 is_voxbox = true;
                 "voxbox"
             } else {
                 kind_attrs.append(&mut vec![
-                    ("file", format!("LEVEL/{}.vox", compute_hash_str(&scene.palettes[shape.palette as usize].materials))),
-                    ("object", compute_hash_str(&shape.voxel_data)),
-                    //("size", join_as_strings(shape.size.iter().map(|dim| *dim as f32)))
+                    ("file", format!("hash/{}.vox", compute_hash_str(&scene.palettes[shape.palette as usize].materials))),
+                    ("object", compute_hash_str(&shape.voxel_data))
                 ]);
                 "vox"
             };
