@@ -1119,10 +1119,9 @@ impl<'a> Iterator for VoxelIter<'a> {
 
 impl fmt::Debug for VoxelData<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut list = f.debug_list();
-        for i in 0..usize::min(8, self.compressed_voxel_indices.len()) {
-            list.entry(&self.compressed_voxel_indices[i]);
-        }
-        list.finish()
+        f.debug_struct("VoxelData")
+            .field("size", &self.size)
+            .field("compressed_voxel_indices", &self.compressed_voxel_indices[0..usize::min(8, self.compressed_voxel_indices.len())].to_vec())
+        .finish()
     }
 }
