@@ -136,9 +136,9 @@ impl ToXMLAttributes for Transform {
 
 #[derive(Default)]
 pub struct VoxStore {
-    hashed_vox_dir: Option<PathBuf>,
-    files: HashMap<String, VoxFile>,
-    dirty: HashSet<String>
+    pub hashed_vox_dir: Option<PathBuf>,
+    pub files: HashMap<String, VoxFile>,
+    pub dirty: HashSet<String>
 }
 
 impl VoxStore {
@@ -165,7 +165,7 @@ impl VoxStore {
         })
     }
 
-    fn write_dirty(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn write_dirty(&mut self) -> Result<(), Box<dyn Error>> {
         for dirty in self.dirty.iter() {
             let file = self.files.remove(dirty).expect("Dirty vox store file was never accessed");
             let path = self.hashed_vox_dir.as_mut().expect("no dir for hashed .vox").join(format!("{}.vox", dirty));
@@ -438,7 +438,7 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
         let parent_isometry: Isometry3<f32> = parent_transform.to_owned().into();
         // isometry *= parent_isometry.inverse();
         isometry.inv_mul(&parent_isometry);
-        println!("{:?}", parent_isometry);
+        // println!("{:?}", parent_isometry);
         let transform: Transform = isometry.into();
         attrs.append(&mut transform.to_xml_attrs());
     }
