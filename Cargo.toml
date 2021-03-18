@@ -6,3 +6,7 @@ members = [
     "blender/rust-addon-library",
     "blender/rust-addon-installer"
 ]
+
+# [profile.release]
+# lto = true
+# codegen-units = 1
