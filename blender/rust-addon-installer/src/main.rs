@@ -3,6 +3,7 @@ use command_macros::command;
 
 use std::{ffi::OsString, io, path::PathBuf};
 use structopt::StructOpt;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 #[derive(StructOpt)]
@@ -25,6 +26,7 @@ fn get_folder_of_this_file() -> PathBuf {
     current_dir.join(path)
 }
 
+#[cfg(unix)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Options::from_args();
     let this_folder = get_folder_of_this_file();
@@ -49,4 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn main() {
+    unimplemented!("linux only")
 }
