@@ -8,6 +8,9 @@ teardown-bin-format = { path = "../bin-format", features = ["convert_nalgebra"] 
 building-blocks = { version = "0.5", features = ["nalgebra"] }
 quick-xml = { version = "0.22", features = ["serialize"] }
 nalgebra = { version = "0.25" }
-vox = { git = "https://github.com/metarmask/vox-format", rev = "78401bd" }
+vox = { git = "https://github.com/metarmask/vox-format", rev = "41b0630" }
 #vox = { path = "../../rust-vox" }
 approx = "0.4"
+derive_builder = "0.9"
+rayon = "1.5"
+base64 = "0.13"

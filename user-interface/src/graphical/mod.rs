@@ -1,177 +1,267 @@
 mod style;
+mod alphanum_ord;
 
-use std::{fs, path::PathBuf};
-use iced::{Align, Button, Column, Element, Length, Row, Rule, Sandbox, Scrollable, Space, Text, VerticalAlignment, button, scrollable};
+use std::{fmt::{self, Formatter, Debug}, fs, mem, path::PathBuf, sync::{Arc, Mutex}};
+use iced::{Align, Application, Button, Column, Command, Element, Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment, button, executor, scrollable};
 use teardown_bin_format::{Scene, parse_file};
 use owning_ref::OwningHandle;
-use teardown_editor_format::VoxStore;
+use teardown_editor_format::{SceneWriterBuilder, VoxStore};
 use crate::{Directories, find_teardown_dirs};
+use self::alphanum_ord::AlphanumericOrd;
 
-pub struct App<'a> {
+pub struct App {
     dirs: Directories,
-    special_file_buttons: Vec<LevelButton>,
-    file_buttons: Vec<LevelButton>,
-    loaded_scene: Option<OwningHandle<Vec<u8>, std::boxed::Box<Scene<'a>>>>,
-    vox_store: Box<VoxStore>,
-    button_to_xml: button::State,
-    button_to_blender: button::State,
+    levels: Vec<Level>,
+    n_special_levels: usize,
+    selected_level: Option<usize>,
+    vox_store: Arc<Mutex<VoxStore>>,
+    button_help: button::State,
     scroll_state: scrollable::State
 }
 
-#[derive(Default)]
-struct LevelButton {
-    selected: bool,
-    path: Option<PathBuf>,
-    button_state: button::State
+enum Load<T> {
+    None,
+    Loading,
+    Loaded(T)
 }
 
-impl LevelButton {
+struct Level {
+    path: PathBuf,
+    scene: Load<OwningHandle<Vec<u8>, std::boxed::Box<Scene<'static>>>>,
+    button_select: button::State,
+    button_to_xml: button::State,
+    button_to_blender: button::State
+}
+
+struct LevelViews<'a> {
+    button: Button<'a, <App as Application>::Message>,
+    side: Option<Element<'a, LevelMessage>>
+}
+
+impl Level {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            scene: Load::None,
+            button_select: Default::default(), button_to_xml: Default::default(), button_to_blender: Default::default() }
+    }
+
+
     fn name(&self) -> String {
-        if let Some(mut path) = self.path.to_owned() {
-            path.set_extension("");
-            path.file_name().unwrap().to_string_lossy().to_string()
+        let mut path = self.path.clone();
+        path.set_extension("");
+        path.file_name().unwrap().to_string_lossy().to_string()
+    }
+
+    fn view(&mut self, selected: bool) -> LevelViews {
+        let name = self.name();
+        let side = if selected {
+            Some(match &self.scene {
+                Load::None => { Text::new("").into() }
+                Load::Loading => {
+                    Column::with_children(vec![
+                        Text::new("Loading ...").into()
+                    ]).padding(5).into()
+                }
+                Load::Loaded(scene) => {
+                    Column::with_children(vec![
+                        Column::with_children(vec![
+                            Text::new(scene.level).into(),
+                            Text::new(format!("Entities: {}", scene.iter_entities().count())).into(),
+                        ]).padding(5).into(),
+                        Space::with_height(Length::Fill).into(),
+                        Row::with_children(vec![
+                            Text::new(format!("Convert to ..."))
+                                .vertical_alignment(VerticalAlignment::Center).into(),
+                            Space::with_width(10.into()).into(),
+                            Button::new(&mut self.button_to_xml, Text::new("Editor"))
+                                .width(Length::Fill)
+                                .on_press(LevelMessage::ConvertXML).into(),
+                            // Space::with_width(Length::Fill).into(),
+                            Button::new(&mut self.button_to_blender, Text::new("Blender"))
+                            .width(Length::Fill).into()
+                        ]).align_items(Align::Center).padding(15).into()
+                    ]).into()
+                }
+            })
+        } else { None };
+        let button = {
+            let text = Text::new(name);
+            let mut button = Button::new(&mut self.button_select, Row::with_children(vec![text.into(), Space::with_width(Length::Fill).into()]));
+            button = button.style(style::LevelButton { selected: selected || if let Load::Loading = self.scene { true } else { false }, loaded: if let Load::Loaded(_) = self.scene { true } else { false } });
+            button
+        };
+        LevelViews { button, side }
+    }
+
+    fn update(&mut self, dirs: &Directories, vox_store: &Arc<Mutex<VoxStore>>, message: LevelMessage) -> Command<LevelMessage> {
+        match message {
+            LevelMessage::ConvertXML => {
+                match mem::replace(&mut self.scene, Load::Loading) {
+                    Load::Loaded(scene) => {
+                        let dirs = dirs.to_owned();
+                        let vox_store = vox_store.clone();
+                        return Command::perform(async move {
+                            let dirs = dirs;
+                            let scene = scene;
+                            SceneWriterBuilder::default()
+                                .vox_store(vox_store.clone())
+                                .mod_dir(dirs.mods.join("converted"))
+                                .scene(&scene).build().unwrap().write_scene().unwrap();
+                            vox_store.lock().unwrap().write_dirty().unwrap();
+                            scene
+                        }, |scene| LevelMessage::XMLConverted(Arc::new(scene)))
+                    }
+                    other => self.scene = other
+                }
+            }
+            LevelMessage::SceneLoaded(scene) => {
+                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) { ok.expect("error loading scene") } else { panic!("Arc::try_unwrap") })
+            }
+            LevelMessage::XMLConverted(scene) => {
+                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) { ok } else { panic!("Arc::try_unwrap") })
+            }
+        }
+
+        Command::none()
+    }
+
+    fn load_scene(&mut self, force: bool) -> Command<LevelMessage> {
+        let no_scene = if let Load::None = self.scene { true } else { false };
+        
+        if no_scene || force {
+            let path = self.path.to_owned();
+            self.scene = Load::Loading;
+            Command::perform(async {
+                parse_file(path)
+            }, |w| LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| err.to_string()))))
         } else {
-            "custom".to_owned()
+            Command::none()
         }
     }
+}
 
-    fn view(&mut self) -> Element<'_, <App as Sandbox>::Message> {
-        let text = Text::new(self.name());
-        let mut button = Button::new(&mut self.button_state, Row::with_children(vec![text.into(), Space::with_width(Length::Fill).into()]))
-            .on_press(Message::LevelButtonPressed(self.path.to_owned().unwrap_or_default()));
-        button = if self.selected {
-            button.style(style::SelectedListButton)
-        } else {
-            button.style(style::ListButton)
-        };
-        button.into()
+#[derive(Clone)]
+pub enum LevelMessage {
+    ConvertXML,
+    SceneLoaded(Arc<Result<OwningHandle<Vec<u8>, Box<Scene<'static>>>, String>>),
+    XMLConverted(Arc<OwningHandle<Vec<u8>, Box<Scene<'static>>>>),
+}
+
+#[derive(Clone)]
+pub enum Message {
+    Level(usize, LevelMessage),
+    SelectLevel(usize),
+    // LoadError(String),
+    Help,
+    HelpQuit
+}
+
+impl Debug for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("hi")
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Message {
-    ConvertXML,
-    LevelButtonPressed(PathBuf),
-    LoadError(String)
-}
-
-impl Sandbox for App<'_> {
+impl Application for App {
     type Message = Message;
+    type Executor = executor::Default;
+    type Flags = ();
 
-    fn new() -> Self {
+    fn new(_flags: ()) -> (Self, Command<Self::Message>) {
         let dirs = find_teardown_dirs().unwrap();
-        let mut file_buttons = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
+        let mut levels = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
             .map(|res| res.map(|dir_entry| {
-                let button = LevelButton {
-                    path: Some(dir_entry.path()),
-                    .. Default::default()
-                };
-                let name = button.name();
-                (name, button)
+                Level::new(dir_entry.path())
             }))
             .collect::<Result<Vec<_>, _>>().unwrap();
-        file_buttons.sort_by(|a, b| alphanumeric_sort::compare_str(&a.0, &b.0));
-        let file_buttons = file_buttons.into_iter().map(|(_, button)| button).collect();
-        App {
-            vox_store: Box::new(VoxStore {
-                hashed_vox_dir: Some(dirs.main.join("data").join("vox").join("hash")),
-                dirty: Default::default(),
-                files: Default::default()
-            }),
-            special_file_buttons: vec![
-                LevelButton {
-                    path: Some(dirs.progress.join("quicksave.bin")),
-                    .. Default::default()
-                },
-                // LevelButton::default()
-            ],
+        levels.sort_by_cached_key(|x| AlphanumericOrd(x.name()));
+        levels.insert(0, Level::new(dirs.progress.join("quicksave.bin")));
+        (App {
+            // levels: levels.into_iter().map(|level| ByAddress(Arc::new(level))).collect(),
+            levels,
+            n_special_levels: 1,
+            selected_level: None,
+            vox_store: VoxStore::new(&dirs.main).unwrap(),
             dirs,
-            file_buttons,
-            button_to_blender: Default::default(),
-            button_to_xml: Default::default(),
-            loaded_scene: Default::default(),
+            button_help: Default::default(),
             scroll_state: Default::default()
-        }
+        }, Command::none())
     }
 
     fn title(&self) -> String {
         format!("Parse and convert the binary format for Teardown")
     }
 
-    fn update(&mut self, message: Self::Message) {
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::ConvertXML => {
-                let dirs = &self.dirs;
-                teardown_editor_format::write_scene(self.loaded_scene.as_ref().unwrap(), &dirs.main, dirs.mods.join("converted"), "main", &mut self.vox_store).unwrap();
-                (&mut self.vox_store).write_dirty().unwrap();
+            Message::Level(level, message) => {
+                self.levels.get_mut(level).expect("no level")
+                    .update(&self.dirs, &self.vox_store, message)
+                    .map(move |what| Message::Level(level, what))
             }
-            Message::LevelButtonPressed(path) => {
-                for button in self.special_file_buttons.iter_mut().chain(self.file_buttons.iter_mut()) {
-                    button.selected = if let Some(other_path) = &button.path {
-                        path == *other_path
-                    } else { false };
-                }
-                self.loaded_scene = Some(parse_file(path).expect("Parsing the level..."));
+            Message::SelectLevel(level) => {
+                let already_selected = self.selected_level == Some(level);
+                self.selected_level = Some(level);
+                self.levels.get_mut(level).unwrap().load_scene(already_selected).map(move |what| Message::Level(level, what))
             }
-            Message::LoadError(_) => {}
+            // Message::LoadError(err) => {
+            //     eprintln!("Load error: {:?}", err);
+            //     Command::none()
+            // }
+            Message::Help => {
+                Command::perform(async move {
+                    open::that("https://github.com/metarmask/teardown").unwrap()
+                }, |_| Message::HelpQuit)
+            }
+            Message::HelpQuit => {
+                Command::none()
+            }
         }
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
-        // Column::with_children(vec![
-        //     Row::with_children(vec![
-        //         Space::with_width(Length::Fill).into(),
-        //         Button::new(&mut self.button_settings, Text::new("Settings"))
-        //         .into()
-        //     ])
-        //     .padding(20)
-        //     .into(),
+        let selected_level = self.selected_level;
+        let (level_buttons, mut level_side_views) = self.levels.iter_mut().enumerate().map(|(i, level)| {
+            let mut view = level.view(selected_level == Some(i));
+            view.button = view.button.on_press(Message::SelectLevel(i));
+            (view.button, view.side)
+        }).unzip::<_, _, Vec<_>, Vec<_>>();
+        Column::with_children(vec![
             Row::with_children(vec![
-                Column::with_children(vec![
-                    {
-                        let mut column = Column::new();
-                        for button in self.special_file_buttons.iter_mut() {
-                            column = column.push(button.view());
-                        }
-                        column
-                    }.into(),
-                    Rule::horizontal(2).into(),
-                    {
-                        let mut scrollable = Scrollable::new(&mut self.scroll_state);
-                        for button in self.file_buttons.iter_mut() {
-                            scrollable = scrollable.push(button.view());
-                        }
-                        scrollable
-                    }.into()
-                ])
-                .width(Length::FillPortion(1)).into(),
-                Column::with_children(vec![
-                    if let Some(scene) = &self.loaded_scene {
-                        Element::from(Column::with_children(vec![
-                            Column::with_children(vec![
-                                Text::new(scene.level).into(),
-                                Text::new(format!("Entities: {}", scene.iter_entities().count())).into(),
-                            ]).into(),
-                            Space::with_height(Length::Fill).into(),
-                            Row::with_children(vec![
-                                Text::new(format!("Convert to ..."))
-                                    .vertical_alignment(VerticalAlignment::Center).into(),
-                                Space::with_width(10.into()).into(),
-                                Button::new(&mut self.button_to_xml, Text::new("Editor"))
-                                    .width(Length::Fill)
-                                    .on_press(Message::ConvertXML).into(),
-                                // Space::with_width(Length::Fill).into(),
-                                Button::new(&mut self.button_to_blender, Text::new("Blender"))
-                                .width(Length::Fill).into()
-                            ]).align_items(Align::Center).padding(15).into()
-                        ]))
-                    } else {
-                        Element::from(Space::with_height(0.into()))
+                Text::new(format!("{} palette files cached", self.vox_store.lock().unwrap().palette_files.len())).into(),
+                Space::with_width(Length::Fill).into(),
+                Button::new(&mut self.button_help, Text::new("Help"))
+                .on_press(Message::Help)
+                .into()
+            ])
+            .padding(20)
+            .into(),
+            Row::with_children(vec![
+                Column::with_children({
+                    let mut level_buttons_iter = level_buttons.into_iter();
+                    let special_buttons = level_buttons_iter.by_ref().take(self.n_special_levels).map(Into::into).collect::<Vec<_>>();
+                    let mut scrollable = Scrollable::new(&mut self.scroll_state).style(style::Theme);
+                    for button in level_buttons_iter {
+                        scrollable = scrollable.push(button);
                     }
-                ])
+                    vec![
+                        Column::with_children(special_buttons).into(),
+                        Rule::horizontal(2).into(),
+                        scrollable.into()
+                    ]
+                })
+                .width(Length::FillPortion(1)).into(),
+                Column::with_children(if let Some(selected) = self.selected_level {
+                    vec![
+                        level_side_views.remove(selected).unwrap()
+                        .map(move |level_message| Message::Level(selected, level_message))]
+                } else {
+                    vec![]
+                })
                 .width(Length::FillPortion(2)).into(),
             ]).into()
-        // ])
-        // .into()
+        ])
+        .into()
     }
 }

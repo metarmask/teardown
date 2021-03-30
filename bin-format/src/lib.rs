@@ -1,5 +1,5 @@
 #![feature(array_map, array_chunks)]
-use std::{collections::hash_map::DefaultHasher, error::Error, hash::{Hash, Hasher}, io::{self, Cursor}, path::Path};
+use std::{error::Error, io::{self, Cursor}, path::Path};
 
 use flate2::read::ZlibDecoder;
 
@@ -73,13 +73,3 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Err
 
 #[derive(Clone, Copy)]
 pub struct PaletteIndex(pub u8);
-
-const BASE64_CONFIG: base64::Config = base64::Config::new(base64::CharacterSet::UrlSafe, false);
-pub fn compute_hash_str<H: Hash>(to_hash: &H) -> String {
-    let mut hasher = DefaultHasher::new();
-    to_hash.hash(&mut hasher);
-    let hash_value_bytes = hasher.finish().to_le_bytes();
-    base64::encode_config(hash_value_bytes, BASE64_CONFIG)
-    // format!("{:016x}", hasher.finish())
-}
-

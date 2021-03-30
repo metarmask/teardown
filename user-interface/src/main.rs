@@ -1,10 +1,10 @@
 mod graphical;
 
 use std::{collections::HashSet, ffi::OsString, fs, iter, path::{Path, PathBuf}};
-use iced::{Sandbox, Settings};
+use iced::{Application, Settings};
 use structopt::StructOpt;
 use teardown_bin_format::{EntityKind, parse_file};
-use teardown_editor_format::{VoxStore, write_scene};
+use teardown_editor_format::{VoxStore, SceneWriterBuilder};
 use anyhow::{Context, Result};
 use thiserror::Error;
 use steamy_vdf as vdf;
@@ -56,12 +56,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Subcommand::Convert { bin_file, teardown_folder, mod_folder, level_name } => {
                 let scene = parse_file(bin_file)?;
-                write_scene(&scene, teardown_folder, mod_folder, &level_name, &mut VoxStore::default())?;
+                SceneWriterBuilder::default()
+                    .vox_store(VoxStore::new(teardown_folder).unwrap())
+                    .mod_dir(mod_folder)
+                    .name(level_name)
+                    .scene(&scene).build().unwrap().write_scene().unwrap();
             }
             Subcommand::ConvertAll { teardown_folder, mods_folder } => {
                 let data_folder = teardown_folder.join("data");
                 let mut created_mods = HashSet::new();
-                let mut vox_store = Default::default();
+                let vox_store = VoxStore::new(teardown_folder).unwrap();
                 for file in fs::read_dir(data_folder.join("bin"))? {
                     let file = file?;
                     println!("Reading {}", file.file_name().to_string_lossy());
@@ -78,7 +82,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !created_mods.insert(level_name.to_owned()) {
                         // continue
                     }
-                    write_scene(&scene, &teardown_folder, &mod_dir, level_id, &mut vox_store)?;
+                    SceneWriterBuilder::default()
+                        .vox_store(vox_store.clone())
+                        .mod_dir(mod_dir)
+                        .scene(&scene).build().unwrap().write_scene().unwrap();
                 }
                 for mod_ in created_mods.iter() {
                     fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
@@ -236,9 +243,3 @@ fn find_teardown_dirs() -> Result<Directories> {
         main: steam_app.install_dir(),
     })
 }
-
-// impl Default for Directories {
-//     fn default() -> Self {
-//         Directories {}
-//     }
-// }

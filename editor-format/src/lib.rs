@@ -1,25 +1,12 @@
 #![feature(array_map)]
-use std::{collections::{HashMap, HashSet, hash_map::Entry}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, io::{BufWriter, ErrorKind, Write}, path::{Path, PathBuf}};
+use std::{collections::{HashMap, hash_map::{DefaultHasher, Entry}}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, hash::{Hash, Hasher}, io::{ErrorKind, Write}, iter, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{Writer, events::{BytesStart, Event}};
-use teardown_bin_format::{Entity, EntityKind, Environment, Exposure, Light, Material, Palette, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, VoxelData, compute_hash_str, environment::{self, Fog, Skybox, Sun}};
+use teardown_bin_format::{Entity, EntityKind, Environment, Exposure, Light, Material, Palette, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, VoxelData, environment::{self, Fog, Skybox, Sun}};
 use vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel};
-
-pub fn voxel_data_to_vox_node(voxel_data: &VoxelData<'_>) -> Node {
-    let mut voxels = Vec::new();
-    for (coord, palette_index) in voxel_data.iter() {
-        if let Ok(pos) = coord.iter().copied().map(TryInto::try_into).collect::<Result<Vec<_>, _>>() {
-            voxels.push(Voxel {
-                pos: <[u8; 3]>::try_from(pos).unwrap(),
-                index: palette_index,
-            });
-        }
-    }
-    let [x, y, z] = voxel_data.size.map(|x| (x as i32) / 2);
-    let node = Node::new([x, y-1, z], Model::new(voxel_data.size.map(|dim| dim.min(256)), voxels));
-    node
-}
+use derive_builder::Builder;
+use rayon::prelude::*;
 
 trait WriteXML {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> XMLResult<()>;
@@ -59,7 +46,7 @@ impl ToXMLAttributes for Skybox<'_> {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         flatten_attrs(vec![
             vec![
-                ("skybox", self.texture.to_string()),
+                ("skybox", PathBuf::from(self.texture).strip_prefix("data/env").map(|x| x.display().to_string()).unwrap_or(self.texture.to_string())),
                 ("skyboxtint", join_as_strings(self.tint.0.iter())),
                 ("skyboxbright", self.brightness.to_string()),
                 ("skyboxrot", self.rotation.to_string()),
@@ -134,97 +121,172 @@ impl ToXMLAttributes for Transform {
     }
 }
 
-#[derive(Default)]
 pub struct VoxStore {
-    pub hashed_vox_dir: Option<PathBuf>,
-    pub files: HashMap<String, VoxFile>,
-    pub dirty: HashSet<String>
+    pub hash_vox_dir: PathBuf,
+    pub palette_files: HashMap<u64, Arc<Mutex<VoxStoreFile>>>,
+}
+
+pub struct VoxStoreFile {
+    path: PathBuf,
+    vox: VoxFile,
+    shape_indices: HashMap<u64, usize>,
+    dirty: bool
+}
+
+impl VoxStoreFile {
+
+    fn new(path: PathBuf, palette: &Palette) -> Result<Self, Box<dyn Error + Send>> {
+        let mut shape_indices = HashMap::new();
+        let vox = if path.exists() {
+            let file = vox::semantic::parse_file(&path)?;
+            for (i, child) in file.root.children().unwrap_or(&vec![]).iter().enumerate() {
+                if let Some(name) = &child.name {
+                    if let Ok(hash_n) = hash_str_to_n(name) {
+                        shape_indices.insert(hash_n, i);
+                    }
+                }
+            }
+            file
+        } else {
+            let mut file = VoxFile::new();
+            file.set_palette(&palette.materials.iter().skip(1).map(convert_material).collect::<Vec<_>>()).unwrap();
+            file
+        };
+        Ok(Self { dirty: false, vox, shape_indices, path })
+    }
+
+    fn store_voxel_data(&mut self, voxel_data: &VoxelData) {
+        let hash_n = compute_hash_n(&voxel_data);
+        if !self.shape_indices.contains_key(&hash_n) {
+            let len = self.vox.root.children().map(|c| c.len()).unwrap_or_default();
+            let mut voxels = Vec::new();
+            for (coord, palette_index) in voxel_data.iter() {
+                if let Ok(pos) = coord.iter().copied().map(TryInto::try_into).collect::<Result<Vec<_>, _>>() {
+                    voxels.push(Voxel {
+                        pos: <[u8; 3]>::try_from(pos).unwrap(),
+                        index: palette_index,
+                    });
+                }
+            }
+            let model = Model::new(voxel_data.size.map(|dim| dim.min(256)), voxels);
+            let [x, y, z] = model.size().map(|x| (x as i32) / 2);
+            let mut node = Node::new([x, y-1, z], model);
+            node.name = Some(hash_n_to_str(hash_n));
+            self.vox.root.add(node);
+            self.shape_indices.insert(hash_n, len);
+            self.dirty = true;
+        }
+    }
+
+    fn write(&mut self) -> Result<(), Box<dyn Error>> {
+        self.vox.to_owned()
+            .write(&mut File::create(&self.path).unwrap()).unwrap();
+        self.dirty = false;
+        Ok(())
+    }
+
+    fn write_dirty(&mut self) -> Result<(), Box<dyn Error>> {
+        if self.dirty {
+            self.write()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for VoxStoreFile {
+    fn drop(&mut self) {
+        self.write_dirty().expect("while writing VoxStoreFile");
+    }
 }
 
 impl VoxStore {
-    fn set_palette_dirty(&mut self, palette: &Palette) {
-        let hash_str = compute_hash_str(&palette.materials);
-        self.dirty.insert(hash_str);
+    pub fn new<P: AsRef<Path>>(teardown_dir: P) -> Result<Arc<Mutex<Self>>, String> {
+        let vox_dir = teardown_dir.as_ref().join("data").join("vox");
+        if !vox_dir.exists() {
+            return Err("data/vox didn't exist in teardown_dir".into())
+        }
+        Ok(Arc::new(Mutex::new(Self {
+            hash_vox_dir: vox_dir.join("hash"),
+            palette_files: Default::default()
+        })))
     }
 
-    fn file_for_palette(&mut self, palette: &Palette) -> Result<&mut VoxFile, Box<dyn Error>> {
-        let hash_str = compute_hash_str(&palette.materials);
-        Ok(match self.files.entry(hash_str.clone()) {
-            Entry::Occupied(occupied) => {
-                occupied.into_mut()
-            }
-            Entry::Vacant(vacant) => {
-                let path = self.hashed_vox_dir.as_mut().expect("no dir for hashed .vox").join(format!("{}.vox", &hash_str));
-                vacant.insert(if path.exists() {
-                    vox::semantic::parse_file(&path)?
-                } else {
-                    self.dirty.insert(hash_str);
-                    palette_to_vox(&palette.materials)
-                })
-            }
-        })
+    fn load_palettes(&mut self, palettes: &[Palette]) -> Vec<Arc<Mutex<VoxStoreFile>>> {
+        let mut vec = Vec::new();
+        for palette in palettes {
+            let hash_n = compute_hash_n(&palette.materials);
+            vec.push(match self.palette_files.entry(hash_n) {
+                Entry::Occupied(occupant) =>
+                    occupant.get().to_owned(),
+                Entry::Vacant(vacancy) =>
+                    vacancy.insert(Arc::new(Mutex::new(
+                        VoxStoreFile::new(
+                            self.hash_vox_dir.join(format!("{}.vox", hash_n_to_str(hash_n))),
+                            palette).unwrap()))).to_owned()
+            })
+        }
+        vec
     }
 
     pub fn write_dirty(&mut self) -> Result<(), Box<dyn Error>> {
-        for dirty in self.dirty.iter() {
-            let file = self.files.remove(dirty).expect("Dirty vox store file was never accessed");
-            let path = self.hashed_vox_dir.as_mut().expect("no dir for hashed .vox").join(format!("{}.vox", dirty));
-            let mut vox_writer = BufWriter::new(File::create(&path)?);
-            file.write(&mut vox_writer)?;
+        for (_, file) in self.palette_files.iter() {
+            file.lock().unwrap().write_dirty()?;
         }
-        self.dirty.clear();
         Ok(())
     }
 }
 
-impl Drop for VoxStore {
-    fn drop(&mut self) {
-        self.write_dirty().expect("while dropping VoxStore")
-    }
+#[derive(Builder)]
+pub struct SceneWriter<'a> {
+    scene: &'a Scene<'a>,
+    mod_dir: PathBuf,
+    vox_store: Arc<Mutex<VoxStore>>,
+    #[builder(default = "\"main\".into()")]
+    name: String,
 }
 
-pub fn write_scene<P: AsRef<Path>, A: AsRef<Path>>(scene: &Scene, teardown_dir: P, mod_dir: A, name: &str, vox_store: &mut VoxStore) -> Result<(), Box<dyn Error>> {
-    let mod_dir = mod_dir.as_ref();
-    let level_dir = mod_dir.join(name);
-    let vox_dir = teardown_dir.as_ref().join("data").join("vox");
-    if !vox_dir.exists() {
-        return Err("data/vox didn't exist in teardown_dir".into())
-    }
-    let hashed_vox_dir = vox_dir.join("hash");
-    fs::create_dir_all(&hashed_vox_dir)?;
-    fs::create_dir_all(mod_dir)?;
-    if let Some(existing) = &vox_store.hashed_vox_dir {
-        if *existing != hashed_vox_dir {
-            return Err("Vox stored used for two different vox locations".into())
+impl SceneWriter<'_> {
+    pub fn write_scene(&self) -> Result<(), Box<dyn Error>> {
+        let mod_dir = &self.mod_dir;
+        let level_dir = mod_dir.join(&self.name);
+        fs::create_dir_all(&self.vox_store.lock().unwrap().hash_vox_dir)?;
+        fs::create_dir_all(mod_dir)?;
+        if let Err(err) = fs::create_dir(&level_dir) {
+            if err.kind() != ErrorKind::AlreadyExists { return Err(err.into()) }
         }
-    } else {
-        vox_store.hashed_vox_dir = Some(hashed_vox_dir);
-    }
-    
-    if let Err(err) = fs::create_dir(&level_dir) {
-        if err.kind() != ErrorKind::AlreadyExists { return Err(err.into()) }
-    }
-    let mut xml_file = File::create(mod_dir.join(format!("{}.xml", name)))?;
-    let mut xml_writer = Writer::new(&mut xml_file);
-    let start = BytesStart::owned_name("scene")
-        .with_attributes(vec![
-            ("version", "0.5.5"),
-            ("shadowVolume", &join_as_strings(scene.shadow_volume.iter()))
-        ].into_iter());
-    let end = start.to_end();
-    xml_writer.write_event(Event::Start(start.clone()))?;
-    scene.environment.write_xml(&mut xml_writer)?;
-    for child in scene.entities.iter() {
-        write_entity_xml(child, &mut xml_writer, scene, &Transform::default())?;
-    }
-    xml_writer.write_event(Event::End(end))?;
-    for (i, palette) in scene.palettes.iter().enumerate() {
-        let vox = vox_store.file_for_palette(palette)?;
-        if insert_shapes_to_vox(scene, i, vox) {
-            vox_store.set_palette_dirty(palette);
+        let mut xml_file = File::create(mod_dir.join(format!("{}.xml", &self.name)))?;
+        let mut xml_writer = Writer::new(&mut xml_file);
+        let start = BytesStart::owned_name("scene")
+            .with_attributes(vec![
+                ("version", "0.5.5"),
+                ("shadowVolume", &join_as_strings(self.scene.shadow_volume.iter()))
+            ].into_iter());
+        let end = start.to_end();
+        xml_writer.write_event(Event::Start(start.clone()))?;
+        self.scene.environment.write_xml(&mut xml_writer)?;
+        let entities = self.scene.entities.iter().collect::<Vec<_>>();
+        for entity in entities {
+            write_entity_xml(entity, &mut xml_writer, self.scene, &Transform::default())?;
         }
+        xml_writer.write_event(Event::End(end))?;
+        let palette_files = {
+            let mut vox_store = self.vox_store.lock().unwrap();
+            vox_store.load_palettes(&self.scene.palettes)
+        };
+        let mut palette_voxel_data: Vec<Vec<&VoxelData>> = iter::repeat(Vec::new()).take(self.scene.palettes.len()).collect();
+        for entity in self.scene.iter_entities() {
+            if let EntityKind::Shape(shape) = &entity.kind {
+                palette_voxel_data.get_mut(shape.palette as usize).expect("non-existent palette").push(&shape.voxel_data);
+            }
+        }
+        palette_files.into_iter().zip(palette_voxel_data).par_bridge().for_each(|(palette_file, voxel_data)| {
+            voxel_data.par_iter().for_each_with(palette_file, |palette_file, shape_voxel_data| {
+                palette_file.lock().unwrap().store_voxel_data(&shape_voxel_data)
+            })
+        });
+        Ok(())
     }
-    Ok(())
 }
 
 fn convert_material(material: &Material) -> VoxMaterial {
@@ -244,14 +306,6 @@ fn convert_material(material: &Material) -> VoxMaterial {
     } else if material.emission > 0.0 {
         VoxMaterialKind::Emit
     } else {
-        // vox_mat.att = Some(0.);
-        // vox_mat.g1 = Some(-0.5);
-        // vox_mat.ldr = Some(0.);
-        // vox_mat.flux = Some(0.);
-        // vox_mat.spec = Some(1.);
-        // vox_mat.g0 = Some(-0.5);
-        // vox_mat.gw = Some(0.7);
-        // vox_mat.metal = Some(0.0); // !?
         if material.metalness == 0.0 && material.reflectivity == 0.0 {
             VoxMaterialKind::Diffuse
         } else {
@@ -263,39 +317,7 @@ fn convert_material(material: &Material) -> VoxMaterial {
             }
         }
     };
-    // vox_mat.spec = Some(material.shinyness);
-    // vox_mat.att = Some(material.reflectivity);
     vox_mat
-}
-
-fn insert_shapes_to_vox(scene: &Scene, palette_index: usize, vox_file: &mut VoxFile) -> bool {
-    let mut voxel_data_set = HashMap::new();
-    for entity in scene.iter_entities() {
-        if let EntityKind::Shape(shape) = &entity.kind {
-            if shape.palette as usize == palette_index {
-                let hash_str = compute_hash_str(&shape.voxel_data);
-                voxel_data_set.entry(hash_str).or_insert(&shape.voxel_data);
-            }
-        }
-    }
-    for node in vox_file.root.children_mut().as_deref().unwrap() {
-        if let Some(name) = &node.name {
-            voxel_data_set.remove(name);
-        }
-    }
-    if voxel_data_set.len() == 0 { return false }
-    for (hash_str, voxel_data) in voxel_data_set {
-        let mut node = voxel_data_to_vox_node(voxel_data);
-        node.name = Some(hash_str);
-        vox_file.root.add(node);
-    }
-    true
-}
-
-fn palette_to_vox(td_materials: &[Material; 256]) -> VoxFile {
-    let mut file = VoxFile::new();
-    file.set_palette(&td_materials.iter().skip(1).map(convert_material).collect::<Vec<_>>()).unwrap();
-    file
 }
 
 fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> String {
@@ -341,8 +363,8 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
                 "voxbox"
             } else {
                 kind_attrs.append(&mut vec![
-                    ("file", format!("hash/{}.vox", compute_hash_str(&scene.palettes[shape.palette as usize].materials))),
-                    ("object", compute_hash_str(&shape.voxel_data))
+                    ("file", format!("hash/{}.vox", hash_n_to_str(compute_hash_n(&scene.palettes[shape.palette as usize].materials)))),
+                    ("object", hash_n_to_str(compute_hash_n(&shape.voxel_data)))
                 ]);
                 "vox"
             };
@@ -378,7 +400,7 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             arm_rot: _,
             ..
         }) => {
-            ("body", vec![
+            ("not-vehicle", vec![
                 ("driven", "false".into()),
                 ("sound", format!("{} {}", sound.name, sound.pitch)),
                 ("spring", spring.to_string()),
@@ -394,7 +416,7 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             ])
         }
         EntityKind::Wheel(_) => {
-            ("wheel", vec![])
+            ("not-wheel", vec![])
         }
         EntityKind::Joint(_) => {
             ("joint", vec![])
@@ -425,20 +447,12 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
                 world_transform = transform_shape(&world_transform, shape.voxel_data.size)
             }
         }
-        // let mut world_isometry: Isometry3<f32> = world_transform.into();
-        // let mut inverse_isometry: Isometry3<f32> = inverse_transform.into();
-
-        // // Actual calculation
-        // world_isometry *= inverse_isometry.inverse();
-        // inverse_isometry *= world_isometry;
-
-        // inverse_transform = inverse_isometry.into();
-        // world_transform = world_isometry.into();
+        if let EntityKind::Light(_) = &entity.kind {
+            world_transform = transform_shape(&world_transform, [1, 1, 1]);
+        }
         let isometry: Isometry3<f32> = world_transform.into();
         let parent_isometry: Isometry3<f32> = parent_transform.to_owned().into();
-        // isometry *= parent_isometry.inverse();
         isometry.inv_mul(&parent_isometry);
-        // println!("{:?}", parent_isometry);
         let transform: Transform = isometry.into();
         attrs.append(&mut transform.to_xml_attrs());
     }
@@ -474,10 +488,8 @@ fn transform_shape(transform: &Transform, size_i: [u32; 3]) -> Transform {
     let size = Vector3::from_iterator(size_i.iter().map(|&dim| (dim - dim % 2) as f32));
     let axis_relative_offset = Vector3::new(0.5, 0.5, 0.0);
     let axis_offset = size.component_mul(&axis_relative_offset);
-    // .transform_vector(&aligned_relative_offset)
     pos += rot.transform_vector(&axis_offset);
     rot *= UnitQuaternion::from_axis_angle(&Vector3::x_axis(), TAU/4.);
-
 
     // println!("# into # pos: {:?}, rot: {:?}, size: {:?}", pos, rot, size_i);
     pos.iter_mut().for_each(|dim| *dim *= 0.1);
@@ -527,6 +539,27 @@ impl From<PaletteIndex> for MaterialGroup {
             28 | 29 => Unphysical,
             n => Reserved(n)
         }
+    }
+}
+
+const BASE64_CONFIG: base64::Config = base64::Config::new(base64::CharacterSet::UrlSafe, false);
+
+pub fn compute_hash_n<H: Hash>(to_hash: &H) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    to_hash.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn hash_n_to_str(n: u64) -> String {
+    base64::encode_config(
+        n.to_le_bytes(),
+        BASE64_CONFIG)
+}
+
+fn hash_str_to_n(string: &str) -> Result<u64, ()> {
+    match base64::decode_config(string, BASE64_CONFIG) {
+        Ok(bytes) => Ok(u64::from_le_bytes(bytes.try_into().map_err(|_| ())?)),
+        Err(_) => Err(())
     }
 }
 

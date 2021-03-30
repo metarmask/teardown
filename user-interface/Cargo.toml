@@ -7,9 +7,8 @@ edition = "2018"
 teardown-bin-format = { path = "../bin-format" }
 teardown-editor-format = { path = "../editor-format" }
 structopt = "0.3"
-vox = { git = "https://github.com/metarmask/vox-format", rev = "78401bd" }
+vox = { git = "https://github.com/metarmask/vox-format", rev = "41b0630" }
 rayon = "1.5"
-indicatif = { version = "0.15", features = ["rayon"] }
 iced = "0.2"
 alphanumeric-sort = "1.4"
 owning_ref = "0.4"
@@ -17,6 +16,8 @@ dirs = "3.0"
 steamy-vdf = "0.2"
 anyhow = "1.0"
 thiserror = "1.0"
+futures = "0.3"
+open = "1.6"
 
 [target.'cfg(windows)'.dependencies]
 registry = "1.1"
