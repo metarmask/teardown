@@ -285,7 +285,7 @@ impl SceneWriter<'_> {
         let mut xml_writer = Writer::new(&mut xml_file);
         let start = BytesStart::owned_name("scene")
             .with_attributes(vec![
-                ("version", "0.5.5"),
+                ("version", "0.6.2"),
                 ("shadowVolume", &join_as_strings(self.scene.shadow_volume.iter()))
             ].into_iter());
         let end = start.to_end();
