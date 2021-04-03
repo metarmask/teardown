@@ -49,7 +49,7 @@ impl ToXMLAttributes for Skybox<'_> {
                 ("skybox", PathBuf::from(self.texture).strip_prefix("data/env").map(|x| x.display().to_string()).unwrap_or(self.texture.to_string())),
                 ("skyboxtint", join_as_strings(self.tint.0.iter())),
                 ("skyboxbright", self.brightness.to_string()),
-                ("skyboxrot", self.rotation.to_string()),
+                ("skyboxrot", self.rotation.to_radians().to_string()),
                 ("ambient", self.ambient_light.to_string()),
             ],
             self.sun.to_xml_attrs()
@@ -62,7 +62,7 @@ impl ToXMLAttributes for Sun {
         vec![
             ("sunBrightness", self.brightness.to_string()),
             ("sunColorTint", join_as_strings(self.tint.0.iter())),
-            ("sunDir", join_as_strings(self.direction.iter())),
+            ("sunDir", "auto".to_string()/* join_as_strings(self.direction.iter().map(|x| x.to_degrees())) */),
             ("sunSpread", self.spread.to_string()),
             ("sunLength", self.max_shadow_length.to_string()),
             ("sunFogScale", self.fog_scale.to_string()),
