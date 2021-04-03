@@ -293,7 +293,7 @@ impl SceneWriter<'_> {
         self.scene.environment.write_xml(&mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         for entity in entities {
-            write_entity_xml(entity, &mut xml_writer, self.scene, &Transform::default())?;
+            write_entity_xml(entity, &mut xml_writer, self.scene, None)?;
         }
         xml_writer.write_event(Event::End(end))?;
         let palette_files = {
@@ -360,7 +360,7 @@ fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> String {
     joined
 }
 
-pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent_transform: &Transform) -> XMLResult<()> {
+pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent_transform: Option<Transform>) -> XMLResult<()> {
     let mut is_voxbox = false;
     // println!("{:>8} {:<8}: {:+05.1?} {:+05.1?}",
     //     format!("{:?}", EntityKindVariants::from(&entity.kind)),
@@ -467,20 +467,25 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
     };
     let start = BytesStart::owned_name(name);
     let mut attrs = Vec::new();
+    let mut possibly_modified_world_transform = None;
     if let Some(mut world_transform) = entity.kind.transform().map(ToOwned::to_owned) {
         if let EntityKind::Shape(shape)  = &entity.kind {
             if !is_voxbox {
                 world_transform = transform_shape(&world_transform, shape.voxel_data.size)
             }
         }
-        if let EntityKind::Light(_) = &entity.kind {
-            world_transform = transform_shape(&world_transform, [1, 1, 1]);
-        }
-        let isometry: Isometry3<f32> = world_transform.into();
-        let parent_isometry: Isometry3<f32> = parent_transform.to_owned().into();
-        isometry.inv_mul(&parent_isometry);
-        let transform: Transform = isometry.into();
-        attrs.append(&mut transform.to_xml_attrs());
+        // if let EntityKind::Light(_) = &entity.kind {
+        //     world_transform = transform_shape(&world_transform, [1, 1, 1]);
+        world_transform = if let Some(parent_transform) = parent_transform {
+            let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
+            let parent_isometry: Isometry3<f32> = parent_transform.to_owned().into();
+            world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
+            world_transform_isometry.into()
+        } else {
+            world_transform
+        };
+        attrs.append(&mut world_transform.to_xml_attrs());
+        possibly_modified_world_transform = Some(world_transform);
     }
     if entity.tags.0.len() != 0 {
         attrs.push(("tags", join_as_strings(entity.tags.0.iter().map(|(k, v)| if *v == "" {
@@ -498,9 +503,8 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
         .with_attributes(attrs.iter().map(|(k, v)| (*k, v.as_ref())));
     let end = start.to_end().into_owned();
     writer.write_event(Event::Start(start))?;
-    let parent_transform = entity.transform().map(ToOwned::to_owned).unwrap_or_default();
     for child in entity.children.iter() {
-        write_entity_xml(child, writer, scene, &parent_transform)?;
+        write_entity_xml(child, writer, scene, possibly_modified_world_transform.clone())?;
     }
     writer.write_event(Event::End(end))?;
     Ok(())
