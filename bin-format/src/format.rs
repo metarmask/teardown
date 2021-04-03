@@ -67,10 +67,9 @@ pub mod light {
         pub cone_penumbra: f32,
         pub fog_iter: f32,
         pub fog_scale: f32,
+        pub area_size: [f32; 2],
         #[doc(hidden)]
-        pub z_f32_for_area_light: f32,
-        #[doc(hidden)]
-        pub z_u8_17: &'a [u8; 17],
+        pub z_u8_17: &'a [u8; 13],
         #[doc(hidden)]
         pub z_f32: f32,
         pub sound: Sound<'a>,
