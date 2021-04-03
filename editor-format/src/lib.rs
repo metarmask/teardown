@@ -121,6 +121,32 @@ impl ToXMLAttributes for Transform {
     }
 }
 
+impl ToXMLAttributes for Light<'_> {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("type", match self.kind {
+                LightKind::Sphere => "sphere",
+                LightKind::Cone => "cone",
+                LightKind::Area => "area",
+            }.to_string()),
+            ("color", join_as_strings(self.rgba.0.iter())),
+            ("scale", self.scale.to_string()),
+            ("angle", self.cone_angle.to_degrees().to_string()),
+            ("penumbra", self.cone_penumbra.to_degrees().to_string()),
+            ("size", match self.kind {
+                LightKind::Area => join_as_strings(self.area_size.iter().map(|half| half * 2.)),
+                _ => self.size.to_string()
+            }),
+            ("reach", self.reach.to_string()),
+            ("unshadowed", self.unshadowed.to_string()),
+            ("fogscale", self.fog_scale.to_string()),
+            ("fogiter", self.fog_iter.to_string()),
+            ("sound", join_as_strings([self.sound.path, self.sound.volume.to_string().as_ref()].iter())),
+            ("glare", self.glare.to_string()),
+        ]
+    }
+}
+
 pub struct VoxStore {
     pub hash_vox_dir: PathBuf,
     pub palette_files: HashMap<u64, Arc<Mutex<VoxStoreFile>>>,
@@ -350,8 +376,10 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
     //     }
     // );
     let (name, mut kind_attrs) = match &entity.kind {
-        EntityKind::Body(_) => {
-            ("body", vec![])
+        EntityKind::Body(body) => {
+            ("body", vec![
+                ("dynamic", (body.dynamic == 1).to_string())
+            ])
         }
         EntityKind::Shape(shape) => {
             let mut kind_attrs = vec![
@@ -421,10 +449,8 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
         EntityKind::Joint(_) => {
             ("joint", vec![])
         }
-        EntityKind::Light(Light {
-            ..
-        }) => {
-            ("light", vec![])
+        EntityKind::Light(light) => {
+            ("light", light.to_xml_attrs())
         }
         EntityKind::Location(_) => {
             ("location", vec![])

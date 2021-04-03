@@ -20,7 +20,6 @@ To run the graphical interface, use:
 * The attributes of the following entity kinds are not added to the editor XML:
   * Wheel
   * Joint
-  * Light
   * Location
   * Screen
   * Trigger
