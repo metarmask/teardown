@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, slice::ArrayChunks, unimplemented};
+use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, slice::ArrayChunks, unimplemented};
 use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 #[cfg(feature="serde")]
@@ -1014,7 +1014,7 @@ pub struct Shape<'a> {
     pub z1_u8: u8,
     #[doc(hidden)]
     pub z2_u8: u8,
-    pub voxel_data: VoxelData<'a>,
+    pub voxels: Voxels<'a>,
     pub palette: u32,
     pub voxel_scaling: f32,
     // Most commonly ff. Also common: all 00. Only two cases of: fffff00
@@ -1024,28 +1024,28 @@ pub struct Shape<'a> {
 
 impl<'a> Shape<'a> {
     pub fn iter_voxels(&'a self) -> VoxelIter<'a> {
-        self.voxel_data.iter()
+        self.voxels.iter()
     }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
-pub struct VoxelData<'a> {
+pub struct Voxels<'a> {
     pub size: [u32; 3],
     #[cfg_attr(feature="serde_format", serde(with="serde_bytes"))]
-    pub compressed_voxel_indices: &'a [u8]
+    pub palette_index_runs: Cow<'a, [u8]>
 }
 
-impl<'p> Parse<'p> for VoxelData<'p> {
+impl<'p> Parse<'p> for Voxels<'p> {
     fn parse<'a>(parser: &'a mut Parser<'p>) -> Result<Self, ParseError<'p>>
     where 'p: 'a {
         let size: [u32; 3] = parser.parse()?;
         let volume = size[0] * size[1] * size[2];
         Ok(if volume == 0 {
-            Self { size, compressed_voxel_indices: &[] }
+            Self { size, palette_index_runs: Cow::Borrowed(&[]) }
         } else {
             let n = parser.parse::<u32>()? as usize;
-            Self { size, compressed_voxel_indices: parser.take_dynamically(n)? }
+            Self { size, palette_index_runs: Cow::Borrowed(parser.take_dynamically(n)?) }
         })
     }
 }
@@ -1086,7 +1086,7 @@ where I: PrimInt {
     }
 }
 
-impl<'a> VoxelData<'a> {
+impl<'a> Voxels<'a> {
     pub fn iter(&'a self) -> VoxelIter<'a> {
         VoxelIter::new(self)
     }
@@ -1099,11 +1099,15 @@ fn flat_map_voxel_data_chunk([n_times, palette_index]: &[u8; 2]) -> Take<Copied<
 }
 
 impl<'a> VoxelIter<'a> {
-    fn new(voxel_data: &'a VoxelData<'a>) -> Self {
+    fn new(voxel_data: &'a Voxels<'a>) -> Self {
+        Self::new_from_parts(&voxel_data.size, voxel_data.palette_index_runs.as_ref())
+    }
+
+    fn new_from_parts(size: &'a [u32; 3], compressed_palette_indices: &'a [u8]) -> Self {
         VoxelIter(
-            BoxIter::new(voxel_data.size.map(|dim| dim as i32).clone(), [0, 1, 2])
+            BoxIter::new(size.map(|dim| dim as i32).clone(), [0, 1, 2])
             .zip(
-                voxel_data.compressed_voxel_indices.array_chunks::<2>()
+                compressed_palette_indices.array_chunks::<2>()
                 .flat_map(flat_map_voxel_data_chunk as fn(&[u8; 2]) -> std::iter::Take<Copied<std::iter::Repeat<&u8>>>)
             )
             .filter(|(_, palette_index)| *palette_index != 0)
@@ -1119,11 +1123,11 @@ impl<'a> Iterator for VoxelIter<'a> {
     }
 }
 
-impl fmt::Debug for VoxelData<'_> {
+impl fmt::Debug for Voxels<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("VoxelData")
             .field("size", &self.size)
-            .field("compressed_voxel_indices", &self.compressed_voxel_indices[0..usize::min(8, self.compressed_voxel_indices.len())].to_vec())
+            .field("compressed_voxel_indices", &self.palette_index_runs[0..usize::min(8, self.palette_index_runs.len())].to_vec())
         .finish()
     }
 }

@@ -183,7 +183,7 @@ impl<'a> ImportContext<'a> {
             EntityKind::Shape(shape) => {
                 let blender_mesh = self.new_mesh.call1((format!("{} mesh", self.get_entity_name(entity)),))?;
                 let mesh_obj = self.new_object.call1((self.get_entity_name(entity), blender_mesh))?;
-                if shape.voxel_data.size.iter().any(|&dim| dim == 0) {
+                if shape.voxels.size.iter().any(|&dim| dim == 0) {
                     println!("Weird thing: {:?}", entity);
                 }
                 if let Some(mesh) = meshes.remove(&entity.handle) {

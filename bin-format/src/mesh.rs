@@ -8,7 +8,7 @@ use crate::{PaletteIndex, format::Shape};
 
 impl<'a> Shape<'a> {
     pub fn to_mesh(&self) -> (Array3<PaletteIndex>, GreedyQuadsBuffer) {
-        let size: [i32; 3] = self.voxel_data.size.map(|dim| dim.try_into().expect("shape size too large"));
+        let size: [i32; 3] = self.voxels.size.map(|dim| dim.try_into().expect("shape size too large"));
         let extent = padded_greedy_quads_chunk_extent(&ExtentN {
             minimum: PointN([0, 0, 0]),
             shape: PointN(size)

@@ -66,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let data_folder = teardown_folder.join("data");
                 let mut created_mods = HashSet::new();
                 let vox_store = VoxStore::new(teardown_folder).unwrap();
+                let mut sound_files = HashSet::new();
                 for file in fs::read_dir(data_folder.join("bin"))? {
                     let file = file?;
                     println!("Reading {}", file.file_name().to_string_lossy());
@@ -80,39 +81,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if *level_id == "" { continue; }
                     let mod_dir = mods_folder.join(level_name);
                     if !created_mods.insert(level_name.to_owned()) {
-                        // continue
+                        continue
                     }
-                    SceneWriterBuilder::default()
-                        .vox_store(vox_store.clone())
-                        .mod_dir(mod_dir)
-                        .scene(&scene).build().unwrap().write_scene().unwrap();
+                    for entity in scene.iter_entities() {
+                        if let EntityKind::Light(light) = &entity.kind {
+                            sound_files.insert(light.sound.path.to_owned() + " " + &light.sound.volume.to_string());
+                            // println!("### {}", entity.desc);
+                            // let materials = &scene.palettes[shape.palette as usize].materials;
+                            // for material in materials.iter() {
+                            //     match material.kind {
+                            //         teardown_bin_format::MaterialKind::None => {}
+                            //         kind => {
+                            //             print!("{:?}:{:?} ", kind, material.replacable);
+                            //         }
+                            //     }
+                            // }
+                            // println!("")
+                        }
+                    }
+                    // SceneWriterBuilder::default()
+                    //     .vox_store(vox_store.clone())
+                    //     .mod_dir(mod_dir)
+                    //     .scene(&scene).build().unwrap().write_scene().unwrap();
+                    
                 }
-                for mod_ in created_mods.iter() {
-                    fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
-                    fs::write(mods_folder.join(mod_).join("info.txt"), format!(
-"name = {}
-author = Tuxedo Labs
-description = ", mod_.to_string_lossy()))?;
-                }
+                println!("{:?}", sound_files);
+//                 for mod_ in created_mods.iter() {
+//                     fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
+//                     fs::write(mods_folder.join(mod_).join("info.txt"), format!(
+// "name = {}
+// author = Tuxedo Labs
+// description = ", mod_.to_string_lossy()))?;
+//                 }
             }
             Subcommand::PrintEnv { bin_file: path } => {
                 let scene = parse_file(path)?;
-                // println!("{:#?}", scene.environment);
-                for entity in scene.iter_entities() {
-                    if let EntityKind::Shape(shape) = &entity.kind {
-                        println!("### {}", entity.desc);
-                        let materials = &scene.palettes[shape.palette as usize].materials;
-                        for material in materials.iter() {
-                            match material.kind {
-                                teardown_bin_format::MaterialKind::None => {}
-                                kind => {
-                                    print!("{:?}:{:?} ", kind, material.replacable);
-                                }
-                            }
-                        }
-                        println!("")
-                    }
-                }
+                println!("{:#?}", scene.environment);
             }
         }
     } else {

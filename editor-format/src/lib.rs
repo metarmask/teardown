@@ -1,9 +1,9 @@
-#![feature(array_map)]
-use std::{collections::{HashMap, hash_map::{DefaultHasher, Entry}}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, hash::{Hash, Hasher}, io::{ErrorKind, Write}, iter, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+#![feature(array_map, array_chunks)]
+use std::{borrow::Cow, collections::{HashMap, hash_map::{DefaultHasher, Entry}}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, hash::{Hash, Hasher}, io::{ErrorKind, Write}, iter, mem, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{Writer, events::{BytesStart, Event}};
-use teardown_bin_format::{Entity, EntityKind, Environment, Exposure, Light, Material, Palette, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, VoxelData, environment::{self, Fog, Skybox, Sun}};
+use teardown_bin_format::{Entity, EntityKind, EntityKindVariants, Environment, Exposure, Light, LightKind, Material, MaterialKind, Palette, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, Voxels, environment::{self, Fog, Skybox, Sun}};
 use vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel};
 use derive_builder::Builder;
 use rayon::prelude::*;
@@ -161,7 +161,7 @@ pub struct VoxStoreFile {
 
 impl VoxStoreFile {
 
-    fn new(path: PathBuf, palette: &Palette) -> Result<Self, Box<dyn Error + Send>> {
+    fn new(path: PathBuf, palette: &[Material; 256]) -> Result<Self, Box<dyn Error + Send>> {
         let mut shape_indices = HashMap::new();
         let vox = if path.exists() {
             let file = vox::semantic::parse_file(&path)?;
@@ -175,13 +175,13 @@ impl VoxStoreFile {
             file
         } else {
             let mut file = VoxFile::new();
-            file.set_palette(&palette.materials.iter().skip(1).map(convert_material).collect::<Vec<_>>()).unwrap();
+            file.set_palette(&palette.iter().skip(1).map(convert_material).collect::<Vec<_>>()).unwrap();
             file
         };
         Ok(Self { dirty: false, vox, shape_indices, path })
     }
 
-    fn store_voxel_data(&mut self, voxel_data: &VoxelData) {
+    fn store_voxel_data(&mut self, voxel_data: &Voxels) {
         let hash_n = compute_hash_n(&voxel_data);
         if !self.shape_indices.contains_key(&hash_n) {
             let len = self.vox.root.children().map(|c| c.len()).unwrap_or_default();
@@ -238,10 +238,10 @@ impl VoxStore {
         })))
     }
 
-    fn load_palettes(&mut self, palettes: &[Palette]) -> Vec<Arc<Mutex<VoxStoreFile>>> {
+    fn load_palettes(&mut self, palettes: &[&[Material; 256]]) -> Vec<Arc<Mutex<VoxStoreFile>>> {
         let mut vec = Vec::new();
         for palette in palettes {
-            let hash_n = compute_hash_n(&palette.materials);
+            let hash_n = compute_hash_n(palette);
             vec.push(match self.palette_files.entry(hash_n) {
                 Entry::Occupied(occupant) =>
                     occupant.get().to_owned(),
@@ -272,6 +272,90 @@ pub struct SceneWriter<'a> {
     name: String,
 }
 
+fn iter_material_kinds() -> impl Iterator<Item = MaterialKind> {
+    [MaterialKind::None, MaterialKind::Glass, MaterialKind::Wood, MaterialKind::Masonry, MaterialKind::Plaster, MaterialKind::Metal, MaterialKind::HeavyMetal, MaterialKind::Rock, MaterialKind::Dirt, MaterialKind::Foliage, MaterialKind::Plastic, MaterialKind::HardMetal, MaterialKind::HardMasonry, MaterialKind::Unknown13, MaterialKind::Unphysical, ]
+    .iter().copied()
+}
+
+fn material_kind_for_index(index: u8) -> MaterialKind {
+    for material_kind in iter_material_kinds() {
+        let range = range_for_material_kind(material_kind);
+        if index >= range[0] && index <= range[1] {
+            return material_kind
+        }
+    }
+    MaterialKind::None
+}
+
+fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
+    match material_kind {
+        MaterialKind::Glass => [1, 8],
+        MaterialKind::Foliage => [9, 24],
+        MaterialKind::Dirt => [25, 40],
+        MaterialKind::Rock => [41, 56],
+        MaterialKind::Wood => [57, 72],
+        MaterialKind::Masonry => [73, 104],
+        MaterialKind::Plaster => [105, 120],
+        MaterialKind::Metal => [121, 136],
+        MaterialKind::HeavyMetal => [137, 152],
+        MaterialKind::Plastic => [153, 168],
+        MaterialKind::HardMetal => [169, 152],
+        MaterialKind::HardMasonry => [177, 184],
+        MaterialKind::Unknown13 => [185, 224],
+        MaterialKind::Unphysical => [225, 240],
+        MaterialKind::None => [241, 255],
+
+    }
+}
+
+pub enum MaterialsMapping<'a> {
+    Same(&'a [Material; 256]),
+    Remapped([Material; 256], [u8; 256])
+}
+
+impl MaterialsMapping<'_> {
+    fn materials_as_ref(&self) -> &[Material; 256] {
+        match self {
+            MaterialsMapping::Same(materials) => materials,
+            MaterialsMapping::Remapped(materials, _) => materials
+        }
+    }
+}
+
+/// Rearrange materials of a palette so that the materials are at the correct indices
+fn remap_materials<'a>(materials: &[Material; 256]) -> MaterialsMapping {
+    for (i, material) in materials.iter().enumerate() {
+        if material.kind != MaterialKind::None && material_kind_for_index(i as u8) != material.kind {
+            let mut material_kind_materials: HashMap<MaterialKind, Vec<(usize, Material)>> = HashMap::new();
+            let mut mapping: [u8; 256] = (0..=255u8).collect::<Vec<_>>().try_into().unwrap();
+            for (i, material) in materials.iter().enumerate() {
+                material_kind_materials.entry(material.kind).or_default().push((i, material.to_owned()));
+            }
+            let mut none_materials = material_kind_materials.remove(&MaterialKind::None).unwrap_or_default();
+            let mut materials_ordered: [Option<Material>; 256] = vec![None; 256].try_into().unwrap();
+            for (kind, materials) in material_kind_materials {
+                let range = range_for_material_kind(kind);
+                let mut what = materials.into_iter();
+                for (new_i, (orig_i, material)) in (range[0]..=range[1]).zip(what.by_ref()) {
+                    mapping[orig_i] = new_i;
+                    materials_ordered[new_i as usize] = Some(material);
+                }
+                none_materials.extend(what);
+            }
+            for (new_i, ok) in materials_ordered.iter_mut().enumerate() {
+                if ok.is_none() {
+                    if let Some((orig_i, none_material)) = none_materials.pop() {
+                        mapping[orig_i] = new_i as u8;
+                        *ok = Some(none_material);
+                    }
+                }
+            }
+            return MaterialsMapping::Remapped(materials_ordered.map(Option::unwrap), mapping)
+        }
+    }
+    MaterialsMapping::Same(materials)
+}
+
 impl SceneWriter<'_> {
     pub fn write_scene(&self) -> Result<(), Box<dyn Error>> {
         let mod_dir = &self.mod_dir;
@@ -281,6 +365,37 @@ impl SceneWriter<'_> {
         if let Err(err) = fs::create_dir(&level_dir) {
             if err.kind() != ErrorKind::AlreadyExists { return Err(err.into()) }
         }
+        let palette_remappings = self.scene.palettes.iter().map(|palette| {
+            remap_materials(&palette.materials)
+        }).collect::<Vec<_>>();
+        let palette_files = {
+            let mut vox_store = self.vox_store.lock().unwrap();
+            vox_store.load_palettes(palette_remappings.iter().map(|palette_remapping| palette_remapping.materials_as_ref()).collect::<Vec<_>>().as_ref())
+        };
+        let mut palette_voxel_data: Vec<Vec<Voxels>> = iter::repeat(Vec::new()).take(self.scene.palettes.len()).collect();
+        let mut entity_voxels: HashMap<u32, Voxels> = HashMap::new();
+        for entity in self.scene.iter_entities() {
+            if let EntityKind::Shape(shape) = &entity.kind {
+                let mut voxels: Voxels = shape.voxels.to_owned();
+                if let Some(MaterialsMapping::Remapped(_, remap_array)) = palette_remappings.get(shape.palette as usize) {
+                    let mut palette_index_runs = voxels.palette_index_runs.clone().into_owned();
+                    for [_n_times, palette_index] in palette_index_runs.array_chunks_mut() {
+                        if *palette_index != 0 {
+                            *palette_index = remap_array[*palette_index as usize];
+                        }
+                        
+                    }
+                    voxels.palette_index_runs = Cow::Owned(palette_index_runs);
+                }
+                palette_voxel_data.get_mut(shape.palette as usize).expect("non-existent palette").push(voxels.clone());
+                entity_voxels.insert(entity.handle, voxels);
+            }
+        }
+        palette_files.into_iter().zip(palette_voxel_data).par_bridge().for_each(|(palette_file, voxel_data)| {
+            voxel_data.par_iter().for_each_with(palette_file, |palette_file, shape_voxel_data| {
+                palette_file.lock().unwrap().store_voxel_data(&shape_voxel_data)
+            })
+        });
         let mut xml_file = File::create(mod_dir.join(format!("{}.xml", &self.name)))?;
         let mut xml_writer = Writer::new(&mut xml_file);
         let start = BytesStart::owned_name("scene")
@@ -293,24 +408,9 @@ impl SceneWriter<'_> {
         self.scene.environment.write_xml(&mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         for entity in entities {
-            write_entity_xml(entity, &mut xml_writer, self.scene, None)?;
+            write_entity_xml(entity, &mut xml_writer, self.scene, None, false, &entity_voxels, &palette_remappings)?;
         }
         xml_writer.write_event(Event::End(end))?;
-        let palette_files = {
-            let mut vox_store = self.vox_store.lock().unwrap();
-            vox_store.load_palettes(&self.scene.palettes)
-        };
-        let mut palette_voxel_data: Vec<Vec<&VoxelData>> = iter::repeat(Vec::new()).take(self.scene.palettes.len()).collect();
-        for entity in self.scene.iter_entities() {
-            if let EntityKind::Shape(shape) = &entity.kind {
-                palette_voxel_data.get_mut(shape.palette as usize).expect("non-existent palette").push(&shape.voxel_data);
-            }
-        }
-        palette_files.into_iter().zip(palette_voxel_data).par_bridge().for_each(|(palette_file, voxel_data)| {
-            voxel_data.par_iter().for_each_with(palette_file, |palette_file, shape_voxel_data| {
-                palette_file.lock().unwrap().store_voxel_data(&shape_voxel_data)
-            })
-        });
         Ok(())
     }
 }
@@ -360,23 +460,42 @@ fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> String {
     joined
 }
 
-pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent_transform: Option<Transform>) -> XMLResult<()> {
+fn vox_corrected_transform(parent: Option<&Entity>) -> Option<Transform> {
+    parent.and_then(|parent| {
+        parent.transform().map(|transform: &Transform| {
+            if let EntityKind::Shape(shape) = &parent.kind {
+                transform_shape(&transform, shape.voxels.size)
+            } else {
+                transform.to_owned()
+            }
+        })
+    })
+    
+}
+
+pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent: Option<&Entity>, mut dynamic: bool, entity_voxels: &HashMap<u32, Voxels>, palette_remappings: &[MaterialsMapping]) -> XMLResult<()> {
     let mut is_voxbox = false;
-    // println!("{:>8} {:<8}: {:+05.1?} {:+05.1?}",
-    //     format!("{:?}", EntityKindVariants::from(&entity.kind)),
-    //     if let Some(tag) = entity.tags.0.iter().next() { tag.0 } else { "" },
-    //     entity.transform().map(ToOwned::to_owned).map(|mut x| {
-    //         x.pos = x.pos.map(|dim| dim * 10.);
-    //         x
-    //     }),
-    //     {
-    //         let mut trans = parent_transform.clone();
-    //         trans.pos = trans.pos.map(|dim| dim * 10.);
-    //         trans
-    //     }
-    // );
+    println!("{:>8} {:<8}: {:+05.1?} {:+05.1?} {:+05.1?}", //  {:+05.1?}
+        format!("{:?}", EntityKindVariants::from(&entity.kind)),
+        if let Some(tag) = entity.tags.0.iter().next() { tag.0 } else { "" },
+        entity.transform().map(ToOwned::to_owned).map(|mut x| {
+            x.pos = x.pos.map(|dim| dim * 10.);
+            x
+        }),
+        entity.kind.z_u8_start(),
+        // {
+        //     let mut trans = parent_transform.clone();
+        //     trans.pos = trans.pos.map(|dim| dim * 10.);
+        //     trans
+        // }
+        parent.and_then(|parent| parent.transform().map(ToOwned::to_owned).map(|mut x| {
+            x.pos = x.pos.map(|dim| dim * 10.);
+            x
+        }))
+    );
     let (name, mut kind_attrs) = match &entity.kind {
         EntityKind::Body(body) => {
+            dynamic = body.dynamic == 1;
             ("body", vec![
                 ("dynamic", (body.dynamic == 1).to_string())
             ])
@@ -385,14 +504,17 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             let mut kind_attrs = vec![
                 ("texture", format!("{} {}", shape.texture_tile, shape.texture_weight))
             ];
-            let xml_tag = if false && shape.voxel_data.size.iter().any(|&dim| dim > 256) {
-                kind_attrs.push(("size", join_as_strings(shape.voxel_data.size.iter())));
+            let xml_tag = if false && shape.voxels.size.iter().any(|&dim| dim > 256) {
+                kind_attrs.push(("size", join_as_strings(shape.voxels.size.iter())));
                 is_voxbox = true;
                 "voxbox"
             } else {
+                
                 kind_attrs.append(&mut vec![
-                    ("file", format!("hash/{}.vox", hash_n_to_str(compute_hash_n(&scene.palettes[shape.palette as usize].materials)))),
-                    ("object", hash_n_to_str(compute_hash_n(&shape.voxel_data)))
+                    ("file", format!("hash/{}.vox", hash_n_to_str(compute_hash_n(palette_remappings[shape.palette as usize].materials_as_ref())))),
+                    ("object", hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap()))),
+                    ("density", shape.density.to_string()),
+                    ("strength", shape.strength.to_string()),
                 ]);
                 "vox"
             };
@@ -428,7 +550,7 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             arm_rot: _,
             ..
         }) => {
-            ("not-vehicle", vec![
+            ("vehicle", vec![
                 ("driven", "false".into()),
                 ("sound", format!("{} {}", sound.name, sound.pitch)),
                 ("spring", spring.to_string()),
@@ -467,25 +589,21 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
     };
     let start = BytesStart::owned_name(name);
     let mut attrs = Vec::new();
-    let mut possibly_modified_world_transform = None;
-    if let Some(mut world_transform) = entity.kind.transform().map(ToOwned::to_owned) {
-        if let EntityKind::Shape(shape)  = &entity.kind {
-            if !is_voxbox {
-                world_transform = transform_shape(&world_transform, shape.voxel_data.size)
+    if let Some(mut world_transform) = vox_corrected_transform(Some(entity)) {
+        // If parent body is dynamic, then light is relative to shape in the save representation
+        world_transform = if let Some(parent_transform) = vox_corrected_transform(parent) {
+            if dynamic {
+                world_transform
+            } else {
+                let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
+                let parent_isometry: Isometry3<f32> = parent_transform.to_owned().into();
+                world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
+                world_transform_isometry.into()
             }
-        }
-        // if let EntityKind::Light(_) = &entity.kind {
-        //     world_transform = transform_shape(&world_transform, [1, 1, 1]);
-        world_transform = if let Some(parent_transform) = parent_transform {
-            let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
-            let parent_isometry: Isometry3<f32> = parent_transform.to_owned().into();
-            world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
-            world_transform_isometry.into()
         } else {
             world_transform
         };
         attrs.append(&mut world_transform.to_xml_attrs());
-        possibly_modified_world_transform = Some(world_transform);
     }
     if entity.tags.0.len() != 0 {
         attrs.push(("tags", join_as_strings(entity.tags.0.iter().map(|(k, v)| if *v == "" {
@@ -504,7 +622,7 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
     let end = start.to_end().into_owned();
     writer.write_event(Event::Start(start))?;
     for child in entity.children.iter() {
-        write_entity_xml(child, writer, scene, possibly_modified_world_transform.clone())?;
+        write_entity_xml(child, writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)?;
     }
     writer.write_event(Event::End(end))?;
     Ok(())
