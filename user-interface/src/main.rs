@@ -99,20 +99,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // println!("")
                         }
                     }
-                    // SceneWriterBuilder::default()
-                    //     .vox_store(vox_store.clone())
-                    //     .mod_dir(mod_dir)
-                    //     .scene(&scene).build().unwrap().write_scene().unwrap();
+                    SceneWriterBuilder::default()
+                        .vox_store(vox_store.clone())
+                        .mod_dir(mod_dir)
+                        .scene(&scene).build().unwrap().write_scene().unwrap();
                     
                 }
-                println!("{:?}", sound_files);
-//                 for mod_ in created_mods.iter() {
-//                     fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
-//                     fs::write(mods_folder.join(mod_).join("info.txt"), format!(
-// "name = {}
-// author = Tuxedo Labs
-// description = ", mod_.to_string_lossy()))?;
-//                 }
+                // println!("{:?}", sound_files);
+                for mod_ in created_mods.iter() {
+                    fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
+                    fs::write(mods_folder.join(mod_).join("info.txt"), format!(
+"name = {}
+author = Tuxedo Labs
+description = ", mod_.to_string_lossy()))?;
+                }
             }
             Subcommand::PrintEnv { bin_file: path } => {
                 let scene = parse_file(path)?;

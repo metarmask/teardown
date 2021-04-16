@@ -93,36 +93,33 @@ pub mod joint {
     #[derive(Debug, Clone, Parse)]
     #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Joint {
+        pub kind: JointKind,
+        pub shape_handles: [u32; 2],
+        pub shape_positions: [[f32; 3]; 2],
         #[doc(hidden)]
-        pub z_u32_3_vec: [u32; 3],
-        pub transform: Transform,
-        #[doc(hidden)]
-        pub floats5: [f32; 5],
+        pub z_f32_6: [f32; 6],
         #[doc(hidden)]
         pub z_u8: u8,
         pub is_rope: u8,
         pub rot_strength: f32,
         pub rot_spring: f32,
-        #[doc(hidden)]
-        pub z_f32_4: [f32; 4],
+        pub rot: [f32; 4],
         pub hinge_min_max: [f32; 2],
         #[doc(hidden)]
         pub z_f32_2: [f32; 2],
         pub size: f32,
-        #[structr(parse="guess_rope(parser)")]
+        #[structr(parse="Ok(if kind == JointKind::Rope { Some(parser.parse()?) } else { None })")]
         pub rope: Option<Rope>
     }
     
-    fn guess_rope<'p>(parser: &mut Parser<'p>) -> Result<Option<Rope>, ParseError<'p>> {
-        let i = parser.i;
-        // Length and the end of children
-        let is_rope = parser.take::<8>()? != &[0, 0, 0, 0, 0xef, 0xbe, 0xef, 0xbe];
-        parser.i = i;
-        Ok(if is_rope {
-            Some(parser.parse()?)
-        } else {
-            None
-        })
+    #[derive(Debug, Clone, PartialEq, Eq, Parse)]
+    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+    #[repr(u32)]
+    pub enum JointKind {
+        Ball = 1,
+        Hinge = 2,
+        Prismatic = 3,
+        Rope = 4,
     }
     
     #[derive(Debug, Clone, Parse)]
@@ -334,9 +331,8 @@ impl<'a> EntityKind<'a> {
             EntityKind::Vehicle(vehicle) => &vehicle.transform,
             EntityKind::Trigger(trigger) => &trigger.transform,
             EntityKind::Location(location) => &location.transform,
-            EntityKind::Joint(joint) => &joint.transform,
             EntityKind::Light(light) => &light.transform,
-            /*EntityKind::Failed(_) | */EntityKind::Wheel(_) | EntityKind::Script(_) => return None
+            /*EntityKind::Failed(_) | */EntityKind::Joint(_) | EntityKind::Wheel(_) | EntityKind::Script(_) => return None
         })
     }
 

@@ -1,9 +1,9 @@
 #![feature(array_map, array_chunks)]
-use std::{borrow::Cow, collections::{HashMap, hash_map::{DefaultHasher, Entry}}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, hash::{Hash, Hasher}, io::{ErrorKind, Write}, iter, mem, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+use std::{borrow::Cow, collections::{HashMap, hash_map::{DefaultHasher, Entry}}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, hash::{Hash, Hasher}, io::{ErrorKind, Write}, iter, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{Writer, events::{BytesStart, Event}};
-use teardown_bin_format::{Entity, EntityKind, EntityKindVariants, Environment, Exposure, Light, LightKind, Material, MaterialKind, Palette, PaletteIndex, Rgba, Scene, Sound, Transform, Vehicle, VehicleProperties, Voxels, environment::{self, Fog, Skybox, Sun}};
+use teardown_bin_format::{BoundaryVertex, Entity, EntityKind, EntityKindVariants, Environment, Exposure, Joint, Light, LightKind, Material, MaterialKind, PaletteIndex, Rgba, Rope, Scene, Sound, Transform, Vehicle, VehicleProperties, Voxels, environment::{self, Fog, Skybox, Sun}, joint::JointKind};
 use vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel};
 use derive_builder::Builder;
 use rayon::prelude::*;
@@ -474,7 +474,6 @@ fn vox_corrected_transform(parent: Option<&Entity>) -> Option<Transform> {
 }
 
 pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent: Option<&Entity>, mut dynamic: bool, entity_voxels: &HashMap<u32, Voxels>, palette_remappings: &[MaterialsMapping]) -> XMLResult<()> {
-    let mut is_voxbox = false;
     println!("{:>8} {:<8}: {:+05.1?} {:+05.1?} {:+05.1?}", //  {:+05.1?}
         format!("{:?}", EntityKindVariants::from(&entity.kind)),
         if let Some(tag) = entity.tags.0.iter().next() { tag.0 } else { "" },
@@ -501,27 +500,15 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
             ])
         }
         EntityKind::Shape(shape) => {
-            let mut kind_attrs = vec![
-                ("texture", format!("{} {}", shape.texture_tile, shape.texture_weight))
-            ];
-            let xml_tag = if false && shape.voxels.size.iter().any(|&dim| dim > 256) {
-                kind_attrs.push(("size", join_as_strings(shape.voxels.size.iter())));
-                is_voxbox = true;
-                "voxbox"
-            } else {
-                
-                kind_attrs.append(&mut vec![
-                    ("file", format!("hash/{}.vox", hash_n_to_str(compute_hash_n(palette_remappings[shape.palette as usize].materials_as_ref())))),
-                    ("object", hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap()))),
-                    ("density", shape.density.to_string()),
-                    ("strength", shape.strength.to_string()),
-                ]);
-                "vox"
-            };
-            (xml_tag, kind_attrs)
+            ("vox", vec![
+                ("file", format!("hash/{}.vox", hash_n_to_str(compute_hash_n(palette_remappings[shape.palette as usize].materials_as_ref())))),
+                ("object", hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap()))),
+                ("texture", format!("{} {}", shape.texture_tile, shape.texture_weight)),
+                ("density", shape.density.to_string()),
+                ("strength", shape.strength.to_string()),
+            ])
         }
         EntityKind::Script(script) => {
-
             let kind_attrs = vec![("file", match Path::new(script.path).strip_prefix("data/script/") {
                 Ok(ok) => ok.display().to_string(), Err(_) => script.path.to_string()
             })];
@@ -568,8 +555,20 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
         EntityKind::Wheel(_) => {
             ("not-wheel", vec![])
         }
-        EntityKind::Joint(_) => {
-            ("joint", vec![])
+        EntityKind::Joint(joint) => {
+            println!("joint {:?}", joint);
+            if joint.kind == JointKind::Rope {
+                ("rope", vec![])
+            } else {
+                ("joint", vec![
+                    ("type", match joint.kind {
+                        JointKind::Ball => "ball",
+                        JointKind::Hinge => "hinge",
+                        JointKind::Prismatic => "prismatic",
+                        JointKind::Rope => unreachable!()
+                    }.to_string())
+                ])
+            }
         }
         EntityKind::Light(light) => {
             ("light", light.to_xml_attrs())
@@ -583,8 +582,16 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
         EntityKind::Trigger(_) => {
             ("trigger", vec![])
         }
-        EntityKind::Water(_) => {
-            ("water", vec![])
+        EntityKind::Water(water) => {
+            println!("water {:?}", water);
+            ("water", vec![
+                ("type", "polygon".to_string()),
+                ("depth", water.depth.to_string()),
+                ("wave", water.wave.to_string()),
+                ("ripple", water.ripple.to_string()),
+                ("motion", water.motion.to_string()),
+                ("foam", water.foam.to_string())
+            ])
         }
     };
     let start = BytesStart::owned_name(name);
@@ -623,6 +630,25 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
     writer.write_event(Event::Start(start))?;
     for child in entity.children.iter() {
         write_entity_xml(child, writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)?;
+    }
+    match &entity.kind {
+        EntityKind::Water(water) => {
+            for BoundaryVertex { x, z } in water.boundary_vertices.iter() {
+                writer.write_event(Event::Empty(BytesStart::owned_name("vertex").with_attributes(vec![
+                    ("pos", join_as_strings([x, z].iter()).as_ref())
+                ])))?;
+            }
+        },
+        EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
+            for pos in [knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to)].iter() {
+                if let Some(pos) = pos {
+                    writer.write_event(Event::Empty(BytesStart::owned_name("location").with_attributes(vec![
+                        ("pos", join_as_strings(pos.iter()).as_ref())
+                    ])))?;
+                }
+            }
+        }
+        _ => {}
     }
     writer.write_event(Event::End(end))?;
     Ok(())

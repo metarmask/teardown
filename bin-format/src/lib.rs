@@ -37,7 +37,7 @@ pub fn read_to_uncompressed<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Erro
     Ok(decompress_if_needed(read_bytes(path)?)?)
 }
 
-pub fn parse_uncompressed<'p>(bytes: &'p [u8]) -> Result<Scene<'p>, ParseError<'p>> {
+pub fn parse_uncompressed(bytes: &[u8]) -> Result<Scene<'_>, ParseError<'_>> {
     Ok(Scene::parse(&mut Parser::new(bytes))?)
 }
 
@@ -69,6 +69,11 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Err
         }
     };
     Ok(())
+}
+
+#[test]
+fn test_one() {
+    test_file("../example-input/quicksave.bin", true).unwrap();
 }
 
 #[derive(Clone, Copy)]
