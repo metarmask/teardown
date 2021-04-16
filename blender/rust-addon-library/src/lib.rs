@@ -1,8 +1,5 @@
 #![feature(array_map, array_chunks)]
-use std::{
-    collections::{BTreeMap, HashMap},
-    f32::consts::PI,
-};
+use std::{collections::{BTreeMap, HashMap}, f32::consts::PI, unimplemented};
 use building_blocks::{core::Axis3Permutation, mesh::OrientedCubeFace, storage::access::GetMut};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressIterator, ProgressStyle};
 use pyo3::{exceptions, prelude::*, types::PyDict, wrap_pyfunction};
@@ -174,6 +171,9 @@ impl<'a> ImportContext<'a> {
                         light = self.new_light.call1((name, "SPOT",))?;
                         light.setattr("spot_size", cone_angle)?;
                         light.setattr("spot_blend", cone_penumbra / cone_angle)?;
+                    }
+                    LightKind::Capsule => {
+                        unimplemented!("Capsule light")
                     }
                 }
                 light.setattr("energy", 100)?;

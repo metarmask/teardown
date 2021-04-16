@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, slice::ArrayChunks, unimplemented};
+use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, slice::ArrayChunks};
 use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 #[cfg(feature="serde")]
@@ -68,10 +68,11 @@ pub mod light {
         pub fog_iter: f32,
         pub fog_scale: f32,
         pub area_size: [f32; 2],
+        pub z1_f32: f32,
         #[doc(hidden)]
-        pub z_u8_17: &'a [u8; 13],
+        pub z_u8_17: [u8; 13],
+        pub z2_f32: f32,
         #[doc(hidden)]
-        pub z_f32: f32,
         pub sound: Sound<'a>,
         pub glare: f32,
     }
@@ -81,8 +82,9 @@ pub mod light {
     #[repr(u8)]
     pub enum Kind {
         Sphere = 1,
-        Cone = 2,
-        Area = 3,
+        Capsule = 2,
+        Cone = 3,
+        Area = 4,
     }
 }
 pub use light::{Light, Kind as LightKind};
@@ -353,6 +355,13 @@ impl<'a> EntityKind<'a> {
     }
 }
 
+#[derive(Debug, Clone, Parse)]
+#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
+pub struct Exhaust {
+    pub transform: Transform,
+    // Values used in built-in levels: 0, 1.5, 2, 3
+    pub z_f32: f32,
+}
 
 #[derive(Debug, Clone, Parse)]
 #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
@@ -386,11 +395,12 @@ pub struct Vehicle<'a> {
     #[structr(len="u32")]
     pub refs: Vec<u32>,
     #[structr(len="u32")]
-    pub exhausts: Vec<Transform>,
+    pub exhausts: Vec<Exhaust>,
+    // pub what: [u8; 4],
     #[structr(len="u32")]
     pub vitals: Vec<Vital>,
     #[structr(parse="guess_arm_rot(parser)")]
-    pub arm_rot: Option<f32>
+    pub arm_rot: Option<f32>,
 }
 
 #[derive(Debug, Clone, Parse)]
@@ -535,20 +545,22 @@ pub mod environment {
         pub nightlight: bool,
         pub ambience: Sound<'a>,
         pub slippery: f32,
+        pub z_f32: f32,
     }
 
     #[derive(Debug, Clone, Parse)]
     #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Skybox<'a> {
         pub texture: &'a str,
-        pub tint: Rgb,
-        pub brightness: f32,
+        pub color_intensity: Rgba,
         /// In radians
         pub rotation: f32,
         pub sun: Sun,
         #[doc(hidden)]
         pub z_u8: u8,
-        pub ambient_light: f32
+        pub constant: Rgba,
+        pub ambient_light: f32,
+        pub ambient_exposure: f32,
     }
 
     #[derive(Debug, Clone, Parse)]
@@ -733,9 +745,8 @@ impl fmt::Debug for Rgb {
 #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Player {
     #[doc(hidden)]
-    pub z1_i32: i32,
-    #[doc(hidden)]
-    pub z2_i32: i32,
+    pub z_i32_3: [i32; 3],
+    pub z_f32: [f32; 7],
     pub transform: Transform,
     pub yaw: f32,
     pub pitch: f32,
@@ -1015,7 +1026,8 @@ pub struct Shape<'a> {
     pub voxel_scaling: f32,
     // Most commonly ff. Also common: all 00. Only two cases of: fffff00
     #[doc(hidden)]
-    pub z_u8_8_eq_ff: &'a [u8; 8]
+    pub z_i32_3: [i32; 2],
+    pub z3_u8: u8,
 }
 
 impl<'a> Shape<'a> {

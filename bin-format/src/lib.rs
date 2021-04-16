@@ -68,6 +68,9 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Err
             Err(err).unwrap()
         }
     };
+    if debug {
+        write_debug_json(&parser.context)?;
+    }
     Ok(())
 }
 

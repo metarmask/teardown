@@ -47,8 +47,8 @@ impl ToXMLAttributes for Skybox<'_> {
         flatten_attrs(vec![
             vec![
                 ("skybox", PathBuf::from(self.texture).strip_prefix("data/env").map(|x| x.display().to_string()).unwrap_or(self.texture.to_string())),
-                ("skyboxtint", join_as_strings(self.tint.0.iter())),
-                ("skyboxbright", self.brightness.to_string()),
+                ("skyboxtint", join_as_strings(self.color_intensity.0.iter())),
+                ("skyboxbright", 1.to_string()),
                 ("skyboxrot", self.rotation.to_radians().to_string()),
                 ("ambient", self.ambient_light.to_string()),
             ],
@@ -126,6 +126,7 @@ impl ToXMLAttributes for Light<'_> {
         vec![
             ("type", match self.kind {
                 LightKind::Sphere => "sphere",
+                LightKind::Capsule => "capsule",
                 LightKind::Cone => "cone",
                 LightKind::Area => "area",
             }.to_string()),
