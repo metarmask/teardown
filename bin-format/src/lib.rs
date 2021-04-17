@@ -80,4 +80,4 @@ fn test_one() {
 }
 
 #[derive(Clone, Copy)]
-pub struct PaletteIndex(pub u8);
+pub struct PaletteIndex(pub u8, bool);

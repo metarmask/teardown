@@ -4,18 +4,23 @@ use building_blocks::{
     mesh::{greedy_quads, padded_greedy_quads_chunk_extent, GreedyQuadsBuffer, IsOpaque, MergeVoxel},
     storage::prelude::*,
 };
-use crate::{PaletteIndex, format::Shape};
+use crate::{Palette, PaletteIndex, format::Shape};
 
 impl<'a> Shape<'a> {
-    pub fn to_mesh(&self) -> (Array3<PaletteIndex>, GreedyQuadsBuffer) {
+    pub fn to_mesh(&self, palettes: &[Palette]) -> (Array3<PaletteIndex>, GreedyQuadsBuffer) {
         let size: [i32; 3] = self.voxels.size.map(|dim| dim.try_into().expect("shape size too large"));
         let extent = padded_greedy_quads_chunk_extent(&ExtentN {
             minimum: PointN([0, 0, 0]),
             shape: PointN(size)
         });
-        let mut array = Array3::fill(extent, PaletteIndex(0));
+        let mut array = Array3::fill(extent, PaletteIndex(0, false));
+        let is_glass = if let Some(palette) = palettes.get(self.palette as usize) {
+            palette.materials.iter().map(|material| material.rgba.0[3] < 1.0).collect::<Vec<_>>().try_into().unwrap()
+        } else {
+            [false; 256]
+        };
         for (coord, palette_index) in self.iter_voxels() {
-            *array.get_mut(PointN(coord)) = PaletteIndex(palette_index);
+            *array.get_mut(PointN(coord)) = PaletteIndex(palette_index, is_glass[palette_index as usize]);
         }
         let mut buffer = GreedyQuadsBuffer::new(extent);
         greedy_quads(&array, &extent, &mut buffer);
@@ -39,10 +44,7 @@ impl IsEmpty for PaletteIndex {
 
 impl IsOpaque for PaletteIndex {
     fn is_opaque(&self) -> bool {
-        // Checks if it is glass. Should check alpha instead.
-        if self.0 == 0 || (self.0 - 1) / 8 == 0 {
-            false
-        } else { true }
+        !self.1
     }
 }
 

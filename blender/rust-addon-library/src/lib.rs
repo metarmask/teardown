@@ -1,5 +1,5 @@
 #![feature(array_map, array_chunks)]
-use std::{collections::{BTreeMap, HashMap}, f32::consts::PI, unimplemented};
+use std::{collections::{BTreeMap, HashMap, HashSet, hash_map::DefaultHasher}, f32::consts::PI, hash::{Hash, Hasher}};
 use building_blocks::{core::Axis3Permutation, mesh::OrientedCubeFace, storage::access::GetMut};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressIterator, ProgressStyle};
 use pyo3::{exceptions, prelude::*, types::PyDict, wrap_pyfunction};
@@ -12,6 +12,7 @@ use teardown_bin_format::{
 struct ImportContext<'a> {
     py: Python<'a>,
     palette_materials: HashMap<u32, HashMap<u8, &'a PyAny>>,
+    hash_material_map: HashMap<u64, &'a PyAny>,
     progress_style: ProgressStyle,
     entity_progress: ProgressBar,
     new_light: &'a PyAny,
@@ -93,6 +94,12 @@ impl BlenderMeshSpec {
     }
 }
 
+pub fn compute_hash_n<H: Hash>(to_hash: &H) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    to_hash.hash(&mut hasher);
+    hasher.finish()
+}
+
 impl<'a> ImportContext<'a> {
     fn get_entity_name(&self, entity: &Entity) -> String {
         let mut s = String::new();
@@ -103,8 +110,8 @@ impl<'a> ImportContext<'a> {
         s
     }
 
-    fn create_mesh_for_shape(shape: &Shape) -> BlenderMeshSpec {
-        let (mut palette_indices, quads) = shape.to_mesh();
+    fn create_mesh_for_shape(shape: &Shape, palettes: &[Palette]) -> BlenderMeshSpec {
+        let (mut palette_indices, quads) = shape.to_mesh(palettes);
         let mut vert_position_indices: BTreeMap<[i32; 3], i32> = BTreeMap::new();
         let mut polygon_vert_indices: Vec<i32> = Vec::new();
         let mut polygon_material_index: Vec<i16> = Vec::new();
@@ -163,7 +170,7 @@ impl<'a> ImportContext<'a> {
                 let light;
                 match kind {
                     LightKind::Area => { light = self.new_light.call1((name, "AREA",))?; }
-                    LightKind::Sphere => {
+                    LightKind::Sphere | LightKind::Capsule => {
                         light = self.new_light.call1((name, "POINT",))?;
                         light.setattr("color", (rgba.0[0], rgba.0[1], rgba.0[2]))?;
                     }
@@ -171,9 +178,6 @@ impl<'a> ImportContext<'a> {
                         light = self.new_light.call1((name, "SPOT",))?;
                         light.setattr("spot_size", cone_angle)?;
                         light.setattr("spot_blend", cone_penumbra / cone_angle)?;
-                    }
-                    LightKind::Capsule => {
-                        unimplemented!("Capsule light")
                     }
                 }
                 light.setattr("energy", 100)?;
@@ -196,6 +200,8 @@ impl<'a> ImportContext<'a> {
                 }
                 mesh_obj.setattr("texture_tile", shape.texture_tile)?;
                 mesh_obj.setattr("texture_weight", shape.texture_weight)?;
+                let s = shape.voxel_scaling * 10.;
+                mesh_obj.setattr("scale", (s, s, s))?;
                 let mesh_materials = blender_mesh.getattr("materials")?;
                 let mut needs_default_material = true;
                 let palette = shape.palette;
@@ -235,21 +241,13 @@ impl<'a> ImportContext<'a> {
     }
 
     fn create_palette(&mut self, palette_i: usize, palette: &Palette) -> PyResult<()> {
-        let mut material_counts: HashMap<_, u8> = HashMap::new();
-        let mut index_map: HashMap<u8, &PyAny> = HashMap::new();
+        let mut index_map: HashMap<u8, &'a PyAny> = HashMap::new();
         for (material_i, material) in palette.materials.iter().enumerate() {
             if let MaterialKind::None = material.kind { continue }
-            // println!("material: {}", material_i);
-            let kind_i = material_counts.entry(&material.kind).and_modify(|n| *n += 1).or_default();
-            let blender_mat = self.material_template.call_method0("copy")?;
-            blender_mat.setattr("name", format!("{:03}:{:?}:{:02}", palette_i, material.kind, kind_i))?;
-            let sliders = blender_mat.getattr("node_tree")?.getattr("nodes")?.get_item(0)?.getattr("inputs")?;
-            let Material { rgba: Rgba([r, g, b, alpha]), shinyness, metalness, reflectivity, emission, .. } = material;
-            sliders.get_item(0)?.setattr("default_value", (r, g, b, 1.0))?;
-            for (i, value) in [alpha, shinyness, metalness, reflectivity, emission].iter().enumerate() {
-                sliders.get_item(i+1)?.setattr("default_value", **value)?;
+            let hash = compute_hash_n(material);
+            if let Some(blend_mat) = self.hash_material_map.get(&hash) {
+                index_map.insert(material_i as u8, blend_mat);
             }
-            index_map.insert(material_i as u8, blender_mat.to_owned());
         }
         self.palette_materials.insert(palette_i as u32, index_map);
         Ok(())
@@ -260,26 +258,73 @@ impl<'a> ImportContext<'a> {
         let parsed = teardown_bin_format::parse_uncompressed(&uncompressed).map_err(|err| {
             PyErr::new::<exceptions::PyException, _>(format!("{:?}", err))
         })?;
-        let new_collection = self.new_collection.call1((format!("{} (Teardown level)", parsed.level),))?;
-        let mut n_entities = 0;
+        let mut n_all_entities = 0;
         let shapes: Vec<(&Entity, &Shape)> = parsed.iter_entities().filter_map(|entity| {
-            n_entities += 1;
+            n_all_entities += 1;
             match &entity.kind { EntityKind::Shape(shape) => Some((entity, shape)), _ => None } } ).collect();
+        let palette_progress = ProgressBar::new(parsed.palettes.len() as u64);
+        palette_progress.set_style(self.progress_style.clone());
+        palette_progress.set_message("Palettes");
+        // FIXME: Convoluted and inefficient
+        // Determines which materials are actually in use. Identical materials
+        // count as one. Later used to construct a map for each palette, mapping indices to the
+        // shared Blender materials which were previously constructed. This is used when the shape is
+        // added.
+        let mut pal_i_map = HashMap::new();
+        let mut hash_to_palette = HashMap::new();
+        let mut material_set_indices = HashSet::new();
+        for (palette_i, palette) in parsed.palettes.iter().enumerate() {
+            for (material_i, material) in palette.materials.iter().enumerate() {
+                if matches!(material.kind, MaterialKind::None) { continue }
+                let hash = compute_hash_n(material);
+                pal_i_map.insert((palette_i, material_i as u8), hash);
+                hash_to_palette.entry(hash).or_insert(material);
+            }
+
+        }
+        for (entity, shape) in &shapes {
+            if let Some(_) = parsed.palettes.get(shape.palette as usize) {
+                for (_, mat_i) in shape.iter_voxels() {
+                    material_set_indices.insert((shape.palette as usize, mat_i));
+                }
+            } else {
+                eprintln!("Warning: Invalid palette reference in entity {}", entity.handle);
+            }
+
+        }
+        let mut material_set = HashSet::new();
+        for indices in material_set_indices {
+            if let Some(hash) = pal_i_map.get(&indices) {
+                material_set.insert(*hash);
+            }
+        }
+        for hash in material_set {
+            let material = hash_to_palette.get(&hash).unwrap();
+            let blender_mat = self.material_template.call_method0("copy")?;
+            blender_mat.setattr("name", format!("{:?}:{:02}", material.kind, hash))?;
+            let sliders = blender_mat.getattr("node_tree")?.getattr("nodes")?.get_item(0)?.getattr("inputs")?;
+            let Material { rgba: Rgba([r, g, b, alpha]), shinyness, metalness, reflectivity, emission, .. } = material;
+            sliders.get_item(0)?.setattr("default_value", (r, g, b, 1.0))?;
+            for (i, value) in [alpha, shinyness, metalness, reflectivity, emission].iter().enumerate() {
+                sliders.get_item(i+1)?.setattr("default_value", **value)?;
+            }
+            self.hash_material_map.insert(hash, blender_mat);
+        }
+        for (i, palette) in parsed.palettes.iter().enumerate().progress_with(palette_progress) {
+            self.create_palette(i, palette)?;
+        }
+        let new_collection = self.new_collection.call1((format!("{} (Teardown level)", parsed.level),))?;
+
         self.entity_progress.set_style(self.progress_style.clone());
-        self.entity_progress.set_length(n_entities);
+        self.entity_progress.set_length(n_all_entities as u64);
         self.entity_progress.set_message("Entities");
         let shape_progress = ProgressBar::new(shapes.len() as u64);
         shape_progress.set_style(self.progress_style.clone());
         shape_progress.set_message("Shape mesh preparation");
         let mut shape_meshes = shapes.par_iter().progress_with(shape_progress).map(|(entity, shape)| {
-            (entity.handle, Self::create_mesh_for_shape(&shape))
+            (entity.handle, Self::create_mesh_for_shape(&shape, &parsed.palettes))
         }).collect::<HashMap<_, _>>();
-        let palette_progress = ProgressBar::new(parsed.palettes.len() as u64);
-        palette_progress.set_style(self.progress_style.clone());
-        palette_progress.set_message("Palettes");
-        for (i, palette) in parsed.palettes.iter().enumerate().progress_with(palette_progress) {
-            self.create_palette(i, palette)?;
-        }
+
         // Just the scene children
         for entity in parsed.entities.iter() {
             self.create_object(entity, new_collection, &parsed, &mut shape_meshes)?;
@@ -311,6 +356,7 @@ fn import_as_collection(py: Python, path: &str) -> PyResult<Py<PyAny>> {
     entity_progress.set_style(progress_style.clone());
     ImportContext {
         palette_materials: HashMap::new(),
+        hash_material_map: HashMap::new(),
         entity_progress: ProgressBar::new(0),
         progress_style,
         py,
