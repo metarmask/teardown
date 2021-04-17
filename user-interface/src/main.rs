@@ -1,3 +1,4 @@
+#![feature(stmt_expr_attributes)]
 mod graphical;
 
 use std::{
