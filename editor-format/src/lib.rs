@@ -819,15 +819,8 @@ pub fn write_entity_xml<W: Write>(
     let end = start.to_end().into_owned();
     writer.write_event(Event::Start(start))?;
     for child in &entity.children {
-        write_entity_xml(
-            child,
-            writer,
-            scene,
-            Some(entity),
-            dynamic,
-            entity_voxels,
-            palette_remappings,
-        )?;
+        #[rustfmt::skip]
+        write_entity_xml(child, writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)?;
     }
     match &entity.kind {
         EntityKind::Water(water) => {
@@ -838,14 +831,9 @@ pub fn write_entity_xml<W: Write>(
                 ))?;
             }
         }
-        EntityKind::Joint(Joint {
-            rope: Some(Rope { knots, .. }),
-            ..
-        }) => {
-            for pos in &[
-                knots.first().map(|knot| knot.from),
-                knots.last().map(|knot| knot.to),
-            ] {
+        #[rustfmt::skip]
+        EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
+            for pos in &[knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to)] {
                 if let Some(pos) = pos {
                     writer.write_event(Event::Empty(
                         BytesStart::owned_name("location")
@@ -853,7 +841,7 @@ pub fn write_entity_xml<W: Write>(
                     ))?;
                 }
             }
-        }
+        },
         _ => {}
     }
     writer.write_event(Event::End(end))?;

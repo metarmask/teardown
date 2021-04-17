@@ -317,6 +317,7 @@ impl<'a> ImportContext<'a> {
         self.palette_materials.insert(palette_i as u32, index_map);
     }
 
+    #[rustfmt::skip]
     fn import(&mut self, path: &str) -> PyResult<Py<PyAny>> {
         let uncompressed = teardown_bin_format::read_to_uncompressed(path)?;
         let parsed = teardown_bin_format::parse_uncompressed(&uncompressed)
@@ -376,42 +377,18 @@ impl<'a> ImportContext<'a> {
             let material = hash_to_palette.get(&hash).unwrap();
             let blender_mat = self.material_template.call_method0("copy")?;
             blender_mat.setattr("name", format!("{:?}:{:02}", material.kind, hash))?;
-            let sliders = blender_mat
-                .getattr("node_tree")?
-                .getattr("nodes")?
-                .get_item(0)?
-                .getattr("inputs")?;
-            let Material {
-                rgba: Rgba([r, g, b, alpha]),
-                shinyness,
-                metalness,
-                reflectivity,
-                emission,
-                ..
-            } = material;
-            sliders
-                .get_item(0)?
-                .setattr("default_value", (r, g, b, 1.0))?;
-            for (i, value) in [alpha, shinyness, metalness, reflectivity, emission]
-                .iter()
-                .enumerate()
-            {
+            let sliders = blender_mat.getattr("node_tree")?.getattr("nodes")?.get_item(0)?.getattr("inputs")?;
+            let Material { rgba: Rgba([r, g, b, alpha]), shinyness, metalness, reflectivity, emission, .. } = material;
+            sliders.get_item(0)?.setattr("default_value", (r, g, b, 1.0))?;
+            for (i, value) in [alpha, shinyness, metalness, reflectivity, emission].iter().enumerate() {
                 sliders.get_item(i + 1)?.setattr("default_value", **value)?;
             }
             self.hash_material_map.insert(hash, blender_mat);
         }
-        for (i, palette) in parsed
-            .palettes
-            .iter()
-            .enumerate()
-            .progress_with(palette_progress)
-        {
+        for (i, palette) in parsed.palettes.iter().enumerate().progress_with(palette_progress) {
             self.create_palette(i, palette);
         }
-        let new_collection = self
-            .new_collection
-            .call1((format!("{} (Teardown level)", parsed.level),))?;
-
+        let new_collection = self.new_collection.call1((format!("{} (Teardown level)", parsed.level),))?;
         self.entity_progress.set_style(self.progress_style.clone());
         self.entity_progress.set_length(n_all_entities as u64);
         self.entity_progress.set_message("Entities");
@@ -421,12 +398,10 @@ impl<'a> ImportContext<'a> {
         let mut shape_meshes = shapes
             .par_iter()
             .progress_with(shape_progress)
-            .map(|(entity, shape)| {
-                (
-                    entity.handle,
-                    Self::create_mesh_for_shape(&shape, &parsed.palettes),
-                )
-            })
+            .map(|(entity, shape)| (
+                entity.handle,
+                Self::create_mesh_for_shape(&shape, &parsed.palettes),
+            ))
             .collect::<HashMap<_, _>>();
 
         // Just the scene children
@@ -447,10 +422,7 @@ impl<'a> ImportContext<'a> {
             (parsed.player.yaw, parsed.player.pitch, 0),
         )?;
         println!("player: {:?}", parsed.player);
-        new_collection
-            .getattr("objects")?
-            .getattr("link")?
-            .call1((player_camera_obj,))?;
+        new_collection.getattr("objects")?.getattr("link")?.call1((player_camera_obj,))?;
         Ok(new_collection.into())
     }
 }
