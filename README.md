@@ -16,15 +16,12 @@ To run the graphical interface, use:
 
 ## Known issues
 * Rotation fails for shapes which are rotated on three axes.
-* The relative position of lights and shapes do not work properly.
+* The relative position of vehicles do not work properly.
 * The attributes of the following entity kinds are not added to the editor XML:
   * Wheel
-  * Joint
+  * Joint (not rope joints, though)
   * Location
   * Screen
   * Trigger
-  * Water
-* Vehicles and wheels are added with a "not-" prefix in the XML, removing them from the editor. This is done to prevent crashes.
+* Wheels are added with a "not-" prefix in the XML, removing them from the editor. This is done to prevent crashes.
 * Shapes which cannot fit in a MagicaVoxel object are truncated.
-* Palettes of non-MagicaVoxel shapes are not rearranged to get the correct materials. (The ground becomes glass)
-
