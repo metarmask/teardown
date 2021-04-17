@@ -1,20 +1,19 @@
 #![feature(array_map, array_chunks)]
-use std::{error::Error, io::{self, Cursor}, path::Path};
+use std::{
+    error::Error,
+    io::{self, Cursor},
+    path::Path,
+};
+use std::{fs::File, io::Read};
 
 use flate2::read::ZlibDecoder;
-
 use owning_ref::OwningHandle;
-use structr::{Parse, ParseError, Parser, get_end_path, write_debug_json};
+use structr::{get_end_path, write_debug_json, Parse, ParseError, Parser};
 
 mod format;
-pub use format::*;
-#[cfg(feature="mesh")]
+#[cfg(feature = "mesh")]
 mod mesh;
-
-use std::{
-    fs::File,
-    io::Read
-};
+pub use format::*;
 
 fn read_bytes<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Error> {
     let mut file = File::open(path)?;
@@ -47,9 +46,7 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwnedScene, Box<dyn std::er
     let uncompressed = read_to_uncompressed(path)?;
     OwningHandle::try_new(uncompressed, |uncompressed_ref| {
         // Safety: I have no idea.
-        unsafe {
-            Ok(Box::new(parse_uncompressed(&*uncompressed_ref)?))
-        }
+        unsafe { Ok(Box::new(parse_uncompressed(&*uncompressed_ref)?)) }
     })
 }
 
@@ -57,7 +54,8 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Err
     let uncompressed = read_to_uncompressed(path)?;
     let mut parser = Parser::new(&uncompressed);
     let _scene = match Scene::parse(&mut parser) {
-        Ok(ok) => ok, Err(err) => {
+        Ok(ok) => ok,
+        Err(err) => {
             println!("Error: {:?}", err.kind);
             if debug {
                 write_debug_json(&parser.context)?;

@@ -1,10 +1,18 @@
-use iced::{Background, Color, button, container, scrollable::{self, Scroller}};
+use iced::{
+    button, container,
+    scrollable::{self, Scroller},
+    Background, Color,
+};
 
 pub struct Theme;
-pub struct LevelButton { pub selected: bool, pub loaded: bool }
+pub struct LevelButton {
+    pub selected: bool,
+    pub loaded: bool,
+}
 
 impl button::StyleSheet for LevelButton {
     fn active(&self) -> button::Style {
+        #[rustfmt::skip]
         match self {
             Self { selected: false, loaded: false } => {
                 button::Style {
@@ -50,10 +58,10 @@ impl button::StyleSheet for LevelButton {
                 r: active.border_color.r + 0.2,
                 g: active.border_color.g + 0.2,
                 b: active.border_color.b,
-                a: active.border_color.a
+                a: active.border_color.a,
             },
             border_width: 2.,
-            .. active
+            ..active
         }
     }
 
@@ -65,17 +73,17 @@ impl button::StyleSheet for LevelButton {
                     r: back.r - 0.2,
                     g: back.g - 0.2,
                     b: back.b - 0.2,
-                    a: back.a
-                })
+                    a: back.a,
+                }),
             }),
             border_width: 2.,
             border_color: Color {
                 r: active.border_color.r + 0.4,
                 g: active.border_color.g + 0.4,
                 b: active.border_color.b,
-                a: active.border_color.a
+                a: active.border_color.a,
             },
-            .. active
+            ..active
         }
     }
 }
@@ -85,7 +93,7 @@ impl button::StyleSheet for Theme {
         button::Style {
             background: Some(Background::Color([1., 0., 0.].into())),
             text_color: Color::from_rgb(0., 1., 0.),
-            .. Default::default()
+            ..Default::default()
         }
     }
 }
@@ -94,7 +102,7 @@ impl container::StyleSheet for Theme {
     fn style(&self) -> container::Style {
         container::Style {
             text_color: Some(Color::from_rgb(0.0, 0.0, 0.0)),
-            .. Default::default()
+            ..Default::default()
         }
     }
 }
@@ -116,8 +124,6 @@ impl scrollable::StyleSheet for Theme {
     }
 
     fn hovered(&self) -> scrollable::Scrollbar {
-        scrollable::Scrollbar {
-            .. self.active()
-        }
+        scrollable::Scrollbar { ..self.active() }
     }
 }

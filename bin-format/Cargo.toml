@@ -15,5 +15,6 @@ building-blocks = { version = "0.5", features = ["nalgebra"], optional = true }
 nalgebra = { version = "0.25", optional = true }
 
 [features]
+default = []
 mesh = ["building-blocks"]
 convert_nalgebra = ["nalgebra"]

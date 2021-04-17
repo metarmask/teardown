@@ -1,0 +1,8 @@
+attr_fn_like_width = 91
+group_imports = "StdExternalCrate"
+imports_granularity = "Crate"
+overflow_delimited_expr = true
+space_around_attr_eq = false
+unstable_features = true
+where_single_line = true
+wrap_comments = true

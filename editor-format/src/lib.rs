@@ -1,12 +1,38 @@
 #![feature(array_map, array_chunks)]
-use std::{borrow::Cow, collections::{HashMap, hash_map::{DefaultHasher, Entry}}, convert::{TryInto, TryFrom}, error::Error, f32::consts::TAU, fs::{self, File}, hash::{Hash, Hasher}, io::{ErrorKind, Write}, iter, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+use std::{
+    borrow::Cow,
+    collections::{
+        hash_map::{DefaultHasher, Entry},
+        HashMap,
+    },
+    convert::{TryFrom, TryInto},
+    error::Error,
+    f32::consts::TAU,
+    fs::{self, File},
+    hash::{Hash, Hasher},
+    io::{ErrorKind, Write},
+    iter,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+
+use derive_builder::Builder;
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
-use quick_xml::{Writer, events::{BytesStart, Event}};
-use teardown_bin_format::{Body, BoundaryVertex, Entity, EntityKind, EntityKindVariants, Environment, Exposure, Joint, JointKind, Light, LightKind, Material, MaterialKind, PaletteIndex, Rgba, Rope, Scene, Script, Sound, Transform, Vehicle, Voxels, Water, environment::{self, Fog, Skybox, Sun}};
-use vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel};
-use derive_builder::Builder;
+use quick_xml::{
+    events::{BytesStart, Event},
+    Writer,
+};
 use rayon::prelude::*;
+use teardown_bin_format::{
+    environment::{self, Fog, Skybox, Sun},
+    Body, BoundaryVertex, Entity, EntityKind, EntityKindVariants, Environment, Exposure, Joint,
+    JointKind, Light, LightKind, Material, MaterialKind, PaletteIndex, Rgba, Rope, Scene, Script,
+    Sound, Transform, Vehicle, Voxels, Water,
+};
+use vox::semantic::{
+    Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel,
+};
 
 trait WriteXML {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> XMLResult<()>;
@@ -28,7 +54,18 @@ impl ToXMLAttributes for Fog {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         vec![
             ("fogColor", join_as_strings(self.color.0.iter())),
-            ("fogParams", join_as_strings([self.start, self.start + self.distance, self.amount, self.exponent].iter()))
+            (
+                "fogParams",
+                join_as_strings(
+                    [
+                        self.start,
+                        self.start + self.distance,
+                        self.amount,
+                        self.exponent,
+                    ]
+                    .iter(),
+                ),
+            ),
         ]
     }
 }
@@ -46,14 +83,18 @@ impl ToXMLAttributes for Skybox<'_> {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         flatten_attrs(vec![
             vec![
-                ("skybox", PathBuf::from(self.texture).strip_prefix("data/env")
-                    .map_or_else(|_| self.texture.to_string(), |x| x.display().to_string())),
+                (
+                    "skybox",
+                    PathBuf::from(self.texture)
+                        .strip_prefix("data/env")
+                        .map_or_else(|_| self.texture.to_string(), |x| x.display().to_string()),
+                ),
                 ("skyboxtint", join_as_strings(self.color_intensity.0.iter())),
                 ("skyboxbright", 1.to_string()),
                 ("skyboxrot", self.rotation.to_radians().to_string()),
                 ("ambient", self.ambient_light.to_string()),
             ],
-            self.sun.to_xml_attrs()
+            self.sun.to_xml_attrs(),
         ])
     }
 }
@@ -63,7 +104,11 @@ impl ToXMLAttributes for Sun {
         vec![
             ("sunBrightness", self.brightness.to_string()),
             ("sunColorTint", join_as_strings(self.tint.0.iter())),
-            ("sunDir", "auto".to_string()/* join_as_strings(self.direction.iter().map(|x| x.to_degrees())) */),
+            (
+                "sunDir",
+                "auto".to_string(), /* join_as_strings(self.direction.iter().map(|x|
+                                     * x.to_degrees())) */
+            ),
             ("sunSpread", self.spread.to_string()),
             ("sunLength", self.max_shadow_length.to_string()),
             ("sunFogScale", self.fog_scale.to_string()),
@@ -85,25 +130,41 @@ impl ToXMLAttributes for environment::Water {
 
 impl ToXMLAttributes for (&'static str, Sound<'_>) {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
-        vec![(self.0, join_as_strings([self.1.path, self.1.volume.to_string().as_ref()].iter()))]
+        vec![(
+            self.0,
+            join_as_strings([self.1.path, self.1.volume.to_string().as_ref()].iter()),
+        )]
     }
 }
 
 impl<'a> WriteXML for Environment<'a> {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> XMLResult<()> {
         writer.write_event(Event::Empty(
-            BytesStart::borrowed_name("environment".as_bytes())
-            .with_attributes(flatten_attrs(vec![
-                self.skybox.to_xml_attrs(),
-                self.exposure.to_xml_attrs(),
-                self.fog.to_xml_attrs(),
-                self.water.to_xml_attrs(),
-                vec![
-                    ("nightlight", self.nightlight.to_string()),
-                    ("ambience", join_as_strings([self.ambience.path, self.ambience.volume.to_string().as_ref()].iter())),
-                    ("slippery", self.slippery.to_string())],
-                self.fog.to_xml_attrs()
-            ]).iter().map(|(k, v)| (*k, v.as_ref())))
+            BytesStart::borrowed_name("environment".as_bytes()).with_attributes(
+                flatten_attrs(vec![
+                    self.skybox.to_xml_attrs(),
+                    self.exposure.to_xml_attrs(),
+                    self.fog.to_xml_attrs(),
+                    self.water.to_xml_attrs(),
+                    vec![
+                        ("nightlight", self.nightlight.to_string()),
+                        (
+                            "ambience",
+                            join_as_strings(
+                                [
+                                    self.ambience.path,
+                                    self.ambience.volume.to_string().as_ref(),
+                                ]
+                                .iter(),
+                            ),
+                        ),
+                        ("slippery", self.slippery.to_string()),
+                    ],
+                    self.fog.to_xml_attrs(),
+                ])
+                .iter()
+                .map(|(k, v)| (*k, v.as_ref())),
+            ),
         ))?;
         Ok(())
     }
@@ -114,10 +175,13 @@ impl ToXMLAttributes for Transform {
         let mut attrs = Vec::new();
         let (pos, rot) = self.as_nalegbra_pair();
         attrs.push(("pos", join_as_strings(pos.iter())));
-        attrs.push(("rot", join_as_strings({
-            let (x, y, z) = rot.euler_angles();
-            [x, y, z].map(|dim| dim.to_degrees()).iter()
-        })));
+        attrs.push((
+            "rot",
+            join_as_strings({
+                let (x, y, z) = rot.euler_angles();
+                [x, y, z].map(|dim| dim.to_degrees()).iter()
+            }),
+        ));
         attrs
     }
 }
@@ -125,25 +189,32 @@ impl ToXMLAttributes for Transform {
 impl ToXMLAttributes for Light<'_> {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         vec![
-            ("type", match self.kind {
-                LightKind::Sphere => "sphere",
-                LightKind::Capsule => "capsule",
-                LightKind::Cone => "cone",
-                LightKind::Area => "area",
-            }.to_string()),
+            (
+                "type",
+                match self.kind {
+                    LightKind::Sphere => "sphere",
+                    LightKind::Capsule => "capsule",
+                    LightKind::Cone => "cone",
+                    LightKind::Area => "area",
+                }
+                .to_string(),
+            ),
             ("color", join_as_strings(self.rgba.0.iter())),
             ("scale", self.scale.to_string()),
             ("angle", self.cone_angle.to_degrees().to_string()),
             ("penumbra", self.cone_penumbra.to_degrees().to_string()),
             ("size", match self.kind {
                 LightKind::Area => join_as_strings(self.area_size.iter().map(|half| half * 2.)),
-                _ => self.size.to_string()
+                _ => self.size.to_string(),
             }),
             ("reach", self.reach.to_string()),
             ("unshadowed", self.unshadowed.to_string()),
             ("fogscale", self.fog_scale.to_string()),
             ("fogiter", self.fog_iter.to_string()),
-            ("sound", join_as_strings([self.sound.path, self.sound.volume.to_string().as_ref()].iter())),
+            (
+                "sound",
+                join_as_strings([self.sound.path, self.sound.volume.to_string().as_ref()].iter()),
+            ),
             ("glare", self.glare.to_string()),
         ]
     }
@@ -158,11 +229,10 @@ pub struct VoxStoreFile {
     path: PathBuf,
     vox: VoxFile,
     shape_indices: HashMap<u64, usize>,
-    dirty: bool
+    dirty: bool,
 }
 
 impl VoxStoreFile {
-
     fn new(path: PathBuf, palette: &[Material; 256]) -> Result<Self, Box<dyn Error + Send>> {
         let mut shape_indices = HashMap::new();
         let vox = if path.exists() {
@@ -177,10 +247,22 @@ impl VoxStoreFile {
             file
         } else {
             let mut file = VoxFile::new();
-            file.set_palette(&palette.iter().skip(1).map(convert_material).collect::<Vec<_>>()).unwrap();
+            file.set_palette(
+                &palette
+                    .iter()
+                    .skip(1)
+                    .map(convert_material)
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
             file
         };
-        Ok(Self { dirty: false, vox, shape_indices, path })
+        Ok(Self {
+            dirty: false,
+            vox,
+            shape_indices,
+            path,
+        })
     }
 
     fn store_voxel_data(&mut self, voxel_data: &Voxels) {
@@ -190,7 +272,12 @@ impl VoxStoreFile {
                 let len = self.vox.root.children().map(Vec::len).unwrap_or_default();
                 let mut voxels = Vec::new();
                 for (coord, palette_index) in voxel_data.iter() {
-                    if let Ok(pos) = coord.iter().copied().map(TryInto::try_into).collect::<Result<Vec<_>, _>>() {
+                    if let Ok(pos) = coord
+                        .iter()
+                        .copied()
+                        .map(TryInto::try_into)
+                        .collect::<Result<Vec<_>, _>>()
+                    {
                         voxels.push(Voxel {
                             pos: <[u8; 3]>::try_from(pos).unwrap(),
                             index: palette_index,
@@ -200,19 +287,18 @@ impl VoxStoreFile {
                 let model = Model::new(voxel_data.size.map(|dim| dim.min(256)), voxels);
                 #[allow(clippy::cast_possible_wrap)]
                 let [x, y, z] = model.size().map(|x| (x as i32) / 2);
-                let mut node = Node::new([x, y-1, z], model);
+                let mut node = Node::new([x, y - 1, z], model);
                 node.name = Some(hash_n_to_str(hash_n));
                 self.vox.root.add(node);
                 self.dirty = true;
                 vacancy.insert(len);
-            },
+            }
             Entry::Occupied(_) => {}
         }
     }
 
     fn write(&mut self) -> Result<(), Box<dyn Error>> {
-        self.vox.to_owned()
-            .write(&mut File::create(&self.path)?)?;
+        self.vox.to_owned().write(&mut File::create(&self.path)?)?;
         self.dirty = false;
         Ok(())
     }
@@ -236,11 +322,11 @@ impl VoxStore {
     pub fn new<P: AsRef<Path>>(teardown_dir: P) -> Result<Arc<Mutex<Self>>, String> {
         let vox_dir = teardown_dir.as_ref().join("data").join("vox");
         if !vox_dir.exists() {
-            return Err("data/vox didn't exist in teardown_dir".into())
+            return Err("data/vox didn't exist in teardown_dir".into());
         }
         Ok(Arc::new(Mutex::new(Self {
             hash_vox_dir: vox_dir.join("hash"),
-            palette_files: HashMap::new()
+            palette_files: HashMap::new(),
         })))
     }
 
@@ -249,13 +335,17 @@ impl VoxStore {
         for palette in palettes {
             let hash_n = compute_hash_n(palette);
             vec.push(match self.palette_files.entry(hash_n) {
-                Entry::Occupied(occupant) =>
-                    occupant.get().to_owned(),
-                Entry::Vacant(vacancy) =>
-                    vacancy.insert(Arc::new(Mutex::new(
+                Entry::Occupied(occupant) => occupant.get().to_owned(),
+                Entry::Vacant(vacancy) => vacancy
+                    .insert(Arc::new(Mutex::new(
                         VoxStoreFile::new(
-                            self.hash_vox_dir.join(format!("{}.vox", hash_n_to_str(hash_n))),
-                            palette).unwrap()))).to_owned()
+                            self.hash_vox_dir
+                                .join(format!("{}.vox", hash_n_to_str(hash_n))),
+                            palette,
+                        )
+                        .unwrap(),
+                    )))
+                    .to_owned(),
             })
         }
         vec
@@ -279,15 +369,32 @@ pub struct SceneWriter<'a> {
 }
 
 fn iter_material_kinds() -> impl Iterator<Item = MaterialKind> {
-    [MaterialKind::None, MaterialKind::Glass, MaterialKind::Wood, MaterialKind::Masonry, MaterialKind::Plaster, MaterialKind::Metal, MaterialKind::HeavyMetal, MaterialKind::Rock, MaterialKind::Dirt, MaterialKind::Foliage, MaterialKind::Plastic, MaterialKind::HardMetal, MaterialKind::HardMasonry, MaterialKind::Unknown13, MaterialKind::Unphysical, ]
-    .iter().copied()
+    [
+        MaterialKind::None,
+        MaterialKind::Glass,
+        MaterialKind::Wood,
+        MaterialKind::Masonry,
+        MaterialKind::Plaster,
+        MaterialKind::Metal,
+        MaterialKind::HeavyMetal,
+        MaterialKind::Rock,
+        MaterialKind::Dirt,
+        MaterialKind::Foliage,
+        MaterialKind::Plastic,
+        MaterialKind::HardMetal,
+        MaterialKind::HardMasonry,
+        MaterialKind::Unknown13,
+        MaterialKind::Unphysical,
+    ]
+    .iter()
+    .copied()
 }
 
 fn material_kind_for_index(index: u8) -> MaterialKind {
     for material_kind in iter_material_kinds() {
         let range = range_for_material_kind(material_kind);
         if index >= range[0] && index <= range[1] {
-            return material_kind
+            return material_kind;
         }
     }
     MaterialKind::None
@@ -310,36 +417,44 @@ fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
         MaterialKind::Unknown13 => [185, 224],
         MaterialKind::Unphysical => [225, 240],
         MaterialKind::None => [241, 255],
-
     }
 }
 
 pub enum MaterialsMapping<'a> {
     Same(&'a [Material; 256]),
-    Remapped(Box<([Material; 256], [u8; 256])>)
+    Remapped(Box<([Material; 256], [u8; 256])>),
 }
 
 impl MaterialsMapping<'_> {
     fn materials_as_ref(&self) -> &[Material; 256] {
         match self {
             MaterialsMapping::Same(materials) => materials,
-            MaterialsMapping::Remapped(remapped) => &remapped.0
+            MaterialsMapping::Remapped(remapped) => &remapped.0,
         }
     }
 }
 
-/// Rearrange materials of a palette so that the materials are at the correct indices
+/// Rearrange materials of a palette so that the materials are at the correct
+/// indices
 #[allow(clippy::cast_possible_truncation)] // Never
 fn remap_materials(materials: &[Material; 256]) -> MaterialsMapping {
     for (i, material) in materials.iter().enumerate() {
-        if material.kind != MaterialKind::None && material_kind_for_index(i as u8) != material.kind {
-            let mut material_kind_materials: HashMap<MaterialKind, Vec<(usize, Material)>> = HashMap::new();
+        if material.kind != MaterialKind::None && material_kind_for_index(i as u8) != material.kind
+        {
+            let mut material_kind_materials: HashMap<MaterialKind, Vec<(usize, Material)>> =
+                HashMap::new();
             let mut mapping: [u8; 256] = (0..=255_u8).collect::<Vec<_>>().try_into().unwrap();
             for (i, material) in materials.iter().enumerate() {
-                material_kind_materials.entry(material.kind).or_default().push((i, material.to_owned()));
+                material_kind_materials
+                    .entry(material.kind)
+                    .or_default()
+                    .push((i, material.to_owned()));
             }
-            let mut none_materials = material_kind_materials.remove(&MaterialKind::None).unwrap_or_default();
-            let mut materials_ordered: [Option<Material>; 256] = vec![None; 256].try_into().unwrap();
+            let mut none_materials = material_kind_materials
+                .remove(&MaterialKind::None)
+                .unwrap_or_default();
+            let mut materials_ordered: [Option<Material>; 256] =
+                vec![None; 256].try_into().unwrap();
             for (kind, materials) in material_kind_materials {
                 let range = range_for_material_kind(kind);
                 let mut what = materials.into_iter();
@@ -357,7 +472,10 @@ fn remap_materials(materials: &[Material; 256]) -> MaterialsMapping {
                     }
                 }
             }
-            return MaterialsMapping::Remapped(Box::new((materials_ordered.map(Option::unwrap), mapping)))
+            return MaterialsMapping::Remapped(Box::new((
+                materials_ordered.map(Option::unwrap),
+                mapping,
+            )));
         }
     }
     MaterialsMapping::Same(materials)
@@ -370,53 +488,93 @@ impl SceneWriter<'_> {
         fs::create_dir_all(&self.vox_store.lock().unwrap().hash_vox_dir)?;
         fs::create_dir_all(mod_dir)?;
         if let Err(err) = fs::create_dir(&level_dir) {
-            if err.kind() != ErrorKind::AlreadyExists { return Err(err.into()) }
+            if err.kind() != ErrorKind::AlreadyExists {
+                return Err(err.into());
+            }
         }
-        let palette_remappings = self.scene.palettes.iter().map(|palette| {
-            remap_materials(&palette.materials)
-        }).collect::<Vec<_>>();
+        let palette_remappings = self
+            .scene
+            .palettes
+            .iter()
+            .map(|palette| remap_materials(&palette.materials))
+            .collect::<Vec<_>>();
         let palette_files = {
             let mut vox_store = self.vox_store.lock().unwrap();
-            vox_store.load_palettes(palette_remappings.iter().map(MaterialsMapping::materials_as_ref).collect::<Vec<_>>().as_ref())
+            vox_store.load_palettes(
+                palette_remappings
+                    .iter()
+                    .map(MaterialsMapping::materials_as_ref)
+                    .collect::<Vec<_>>()
+                    .as_ref(),
+            )
         };
-        let mut palette_voxel_data: Vec<Vec<Voxels>> = iter::repeat(Vec::new()).take(self.scene.palettes.len()).collect();
+        let mut palette_voxel_data: Vec<Vec<Voxels>> = iter::repeat(Vec::new())
+            .take(self.scene.palettes.len())
+            .collect();
         let mut entity_voxels: HashMap<u32, Voxels> = HashMap::new();
         for entity in self.scene.iter_entities() {
             if let EntityKind::Shape(shape) = &entity.kind {
                 let mut voxels: Voxels = shape.voxels.to_owned();
-                if let Some(MaterialsMapping::Remapped(remapped)) = palette_remappings.get(shape.palette as usize) {
+                if let Some(MaterialsMapping::Remapped(remapped)) =
+                    palette_remappings.get(shape.palette as usize)
+                {
                     let remap_array = remapped.1;
                     let mut palette_index_runs = voxels.palette_index_runs.clone().into_owned();
                     for [_n_times, palette_index] in palette_index_runs.array_chunks_mut() {
                         if *palette_index != 0 {
                             *palette_index = remap_array[*palette_index as usize];
                         }
-                        
                     }
                     voxels.palette_index_runs = Cow::Owned(palette_index_runs);
                 }
-                palette_voxel_data.get_mut(shape.palette as usize).expect("non-existent palette").push(voxels.clone());
+                palette_voxel_data
+                    .get_mut(shape.palette as usize)
+                    .expect("non-existent palette")
+                    .push(voxels.clone());
                 entity_voxels.insert(entity.handle, voxels);
             }
         }
-        palette_files.into_iter().zip(palette_voxel_data).par_bridge().for_each(|(palette_file, voxel_data)| {
-            voxel_data.par_iter().for_each_with(palette_file, |palette_file, shape_voxel_data| {
-                palette_file.lock().unwrap().store_voxel_data(&shape_voxel_data)
-            })
-        });
+        palette_files
+            .into_iter()
+            .zip(palette_voxel_data)
+            .par_bridge()
+            .for_each(|(palette_file, voxel_data)| {
+                voxel_data.par_iter().for_each_with(
+                    palette_file,
+                    |palette_file, shape_voxel_data| {
+                        palette_file
+                            .lock()
+                            .unwrap()
+                            .store_voxel_data(&shape_voxel_data)
+                    },
+                )
+            });
         let mut xml_file = File::create(mod_dir.join(format!("{}.xml", &self.name)))?;
         let mut xml_writer = Writer::new(&mut xml_file);
-        let start = BytesStart::owned_name("scene")
-            .with_attributes(vec![
+        let start = BytesStart::owned_name("scene").with_attributes(
+            vec![
                 ("version", "0.6.2"),
-                ("shadowVolume", &join_as_strings(self.scene.shadow_volume.iter()))
-            ].into_iter());
+                (
+                    "shadowVolume",
+                    &join_as_strings(self.scene.shadow_volume.iter()),
+                ),
+            ]
+            .into_iter(),
+        );
         let end = start.to_end();
         xml_writer.write_event(Event::Start(start.clone()))?;
         self.scene.environment.write_xml(&mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         for entity in entities {
-            write_entity_xml(entity, &mut xml_writer, self.scene, None, false, &entity_voxels, &palette_remappings)?;
+            write_entity_xml(
+                entity,
+                &mut xml_writer,
+                self.scene,
+                None,
+                false,
+                &entity_voxels,
+                &palette_remappings,
+            )?;
         }
         xml_writer.write_event(Event::End(end))?;
         Ok(())
@@ -426,7 +584,8 @@ impl SceneWriter<'_> {
 fn convert_material(material: &Material) -> VoxMaterial {
     let Rgba([r, g, b, a]) = material.rgba;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let mut vox_mat = VoxMaterial::new_color([r, g, b, a].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
+    let mut vox_mat =
+        VoxMaterial::new_color([r, g, b, a].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
     vox_mat.ior = Some(0.3);
     vox_mat.spec_p = Some(0.);
     vox_mat.weight = Some(if material.shinyness > 0.0 {
@@ -443,7 +602,8 @@ fn convert_material(material: &Material) -> VoxMaterial {
     } else if material.metalness == 0.0 && material.reflectivity == 0.0 {
         VoxMaterialKind::Diffuse
     } else {
-        // To match the original files. Is interpreted as metal if together with spec_p and weight.
+        // To match the original files. Is interpreted as metal if together with spec_p
+        // and weight.
         if material.shinyness > 0.0 {
             VoxMaterialKind::Metal
         } else {
@@ -458,7 +618,7 @@ fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> String {
     let mut joined = if let Some(first) = item_strings.next() {
         first
     } else {
-        return String::new()
+        return String::new();
     };
     for item_string in item_strings {
         joined += " ";
@@ -477,7 +637,6 @@ fn vox_corrected_transform(parent: Option<&Entity>) -> Option<Transform> {
             }
         })
     })
-    
 }
 
 impl ToXMLAttributes for Vehicle<'_> {
@@ -485,7 +644,10 @@ impl ToXMLAttributes for Vehicle<'_> {
         let props = &self.properties;
         vec![
             ("driven", "false".into()),
-            ("sound", format!("{} {}", props.sound.name, props.sound.pitch)),
+            (
+                "sound",
+                format!("{} {}", props.sound.name, props.sound.pitch),
+            ),
             ("spring", props.spring.to_string()),
             ("damping", props.damping.to_string()),
             //("topspeed", ),
@@ -495,7 +657,7 @@ impl ToXMLAttributes for Vehicle<'_> {
             ("antiroll", props.antiroll.to_string()),
             ("difflock", self.difflock.to_string()),
             ("steerassist", props.steerassist.to_string()),
-            ("friction", props.friction.to_string())
+            ("friction", props.friction.to_string()),
         ]
     }
 }
@@ -508,16 +670,20 @@ impl ToXMLAttributes for Water {
             ("wave", self.wave.to_string()),
             ("ripple", self.ripple.to_string()),
             ("motion", self.motion.to_string()),
-            ("foam", self.foam.to_string())
+            ("foam", self.foam.to_string()),
         ]
     }
 }
 
 impl ToXMLAttributes for Script<'_> {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
-        vec![("file", match Path::new(self.path).strip_prefix("data/script/") {
-            Ok(ok) => ok.display().to_string(), Err(_) => self.path.to_string()
-        })]
+        vec![(
+            "file",
+            match Path::new(self.path).strip_prefix("data/script/") {
+                Ok(ok) => ok.display().to_string(),
+                Err(_) => self.path.to_string(),
+            },
+        )]
     }
 }
 
@@ -531,20 +697,23 @@ fn joint_xml(joint: &Joint) -> (&'static str, Vec<(&'static str, String)>) {
     if joint.kind == JointKind::Rope {
         ("rope", vec![])
     } else {
-        ("joint", vec![
-            ("type", match joint.kind {
+        ("joint", vec![(
+            "type",
+            match joint.kind {
                 JointKind::Ball => "ball",
                 JointKind::Hinge => "hinge",
                 JointKind::Prismatic => "prismatic",
-                JointKind::Rope => unreachable!()
-            }.to_string())
-        ])
+                JointKind::Rope => unreachable!(),
+            }
+            .to_string(),
+        )])
     }
 }
 
 #[allow(dead_code)]
 fn debug_write_entity_positions(entity: &Entity, parent: Option<&Entity>) {
-    println!("{:>8} {:<8}: {:+05.1?} {:+05.1?} {:+05.1?}", //  {:+05.1?}
+    println!(
+        "{:>8} {:<8}: {:+05.1?} {:+05.1?} {:+05.1?}", //  {:+05.1?}
         format!("{:?}", EntityKindVariants::from(&entity.kind)),
         entity.tags.0.iter().next().map_or("", |tag| tag.0),
         entity.transform().map(ToOwned::to_owned).map(|mut x| {
@@ -557,29 +726,51 @@ fn debug_write_entity_positions(entity: &Entity, parent: Option<&Entity>) {
         //     trans.pos = trans.pos.map(|dim| dim * 10.);
         //     trans
         // }
-        parent.and_then(|parent| parent.transform().map(ToOwned::to_owned).map(|mut x| {
-            x.pos = x.pos.map(|dim| dim * 10.);
-            x
-        }))
+        parent.and_then(
+            |parent| parent.transform().map(ToOwned::to_owned).map(|mut x| {
+                x.pos = x.pos.map(|dim| dim * 10.);
+                x
+            })
+        )
     );
 }
 
-pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene: &Scene, parent: Option<&Entity>, mut dynamic: bool, entity_voxels: &HashMap<u32, Voxels>, palette_remappings: &[MaterialsMapping]) -> XMLResult<()> {
+pub fn write_entity_xml<W: Write>(
+    entity: &Entity,
+    writer: &mut Writer<W>,
+    scene: &Scene,
+    parent: Option<&Entity>,
+    mut dynamic: bool,
+    entity_voxels: &HashMap<u32, Voxels>,
+    palette_remappings: &[MaterialsMapping],
+) -> XMLResult<()> {
     // debug_write_entity_positions(entity, parent);
     let (name, mut kind_attrs) = match &entity.kind {
         EntityKind::Body(body) => {
             dynamic = body.dynamic == 1;
             ("body", body.to_xml_attrs())
         }
-        EntityKind::Shape(shape) => {
-            ("vox", vec![
-                ("file", format!("hash/{}.vox", hash_n_to_str(compute_hash_n(palette_remappings[shape.palette as usize].materials_as_ref())))),
-                ("object", hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap()))),
-                ("texture", format!("{} {}", shape.texture_tile, shape.texture_weight)),
-                ("density", shape.density.to_string()),
-                ("strength", shape.strength.to_string()),
-            ])
-        }
+        EntityKind::Shape(shape) => ("vox", vec![
+            (
+                "file",
+                format!(
+                    "hash/{}.vox",
+                    hash_n_to_str(compute_hash_n(
+                        palette_remappings[shape.palette as usize].materials_as_ref()
+                    ))
+                ),
+            ),
+            (
+                "object",
+                hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap())),
+            ),
+            (
+                "texture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ),
+            ("density", shape.density.to_string()),
+            ("strength", shape.strength.to_string()),
+        ]),
         EntityKind::Script(script) => ("script", script.to_xml_attrs()),
         EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
         EntityKind::Wheel(_) => ("not-wheel", vec![]),
@@ -593,7 +784,8 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
     let start = BytesStart::owned_name(name);
     let mut attrs = Vec::new();
     if let Some(mut world_transform) = vox_corrected_transform(Some(entity)) {
-        // If parent body is dynamic, then light is relative to shape in the save representation
+        // If parent body is dynamic, then light is relative to shape in the save
+        // representation
         if let Some(parent_transform) = vox_corrected_transform(parent) {
             world_transform = if dynamic {
                 world_transform
@@ -607,38 +799,58 @@ pub fn write_entity_xml<W: Write>(entity: &Entity, writer: &mut Writer<W>, scene
         attrs.append(&mut world_transform.to_xml_attrs());
     }
     if !entity.tags.0.is_empty() {
-        attrs.push(("tags", join_as_strings(entity.tags.0.iter().map(|(&k, &v)| if v.is_empty() {
-            k.to_string()
-        } else {
-            format!("{}={}", k, v)
-        }))));
+        attrs.push((
+            "tags",
+            join_as_strings(entity.tags.0.iter().map(|(&k, &v)| {
+                if v.is_empty() {
+                    k.to_string()
+                } else {
+                    format!("{}={}", k, v)
+                }
+            })),
+        ));
     }
     if !entity.desc.is_empty() {
         attrs.push(("desc", entity.desc.to_owned()));
     }
     attrs.push(("name", entity.handle.to_string()));
     attrs.append(&mut kind_attrs);
-    let start = start
-        .with_attributes(attrs.iter().map(|(k, v)| (*k, v.as_ref())));
+    let start = start.with_attributes(attrs.iter().map(|(k, v)| (*k, v.as_ref())));
     let end = start.to_end().into_owned();
     writer.write_event(Event::Start(start))?;
     for child in &entity.children {
-        write_entity_xml(child, writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)?;
+        write_entity_xml(
+            child,
+            writer,
+            scene,
+            Some(entity),
+            dynamic,
+            entity_voxels,
+            palette_remappings,
+        )?;
     }
     match &entity.kind {
         EntityKind::Water(water) => {
             for BoundaryVertex { x, z } in &water.boundary_vertices {
-                writer.write_event(Event::Empty(BytesStart::owned_name("vertex").with_attributes(vec![
-                    ("pos", join_as_strings([x, z].iter()).as_ref())
-                ])))?;
+                writer.write_event(Event::Empty(
+                    BytesStart::owned_name("vertex")
+                        .with_attributes(vec![("pos", join_as_strings([x, z].iter()).as_ref())]),
+                ))?;
             }
-        },
-        EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
-            for pos in &[knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to)] {
+        }
+        EntityKind::Joint(Joint {
+            rope: Some(Rope { knots, .. }),
+            ..
+        }) => {
+            for pos in &[
+                knots.first().map(|knot| knot.from),
+                knots.last().map(|knot| knot.to),
+            ] {
                 if let Some(pos) = pos {
-                    writer.write_event(Event::Empty(BytesStart::owned_name("location").with_attributes(vec![
-                        ("pos", join_as_strings(pos.iter()).as_ref())
-                    ])))?;
+                    writer.write_event(Event::Empty(
+                        BytesStart::owned_name("location")
+                            .with_attributes(vec![("pos", join_as_strings(pos.iter()).as_ref())]),
+                    ))?;
                 }
             }
         }
@@ -657,7 +869,7 @@ fn transform_shape(transform: &Transform, size_i: [u32; 3]) -> Transform {
     let axis_relative_offset = Vector3::new(0.5, 0.5, 0.0);
     let axis_offset = size.component_mul(&axis_relative_offset);
     pos += rot.transform_vector(&axis_offset);
-    rot *= UnitQuaternion::from_axis_angle(&Vector3::x_axis(), TAU/4.);
+    rot *= UnitQuaternion::from_axis_angle(&Vector3::x_axis(), TAU / 4.);
 
     // println!("# into # pos: {:?}, rot: {:?}, size: {:?}", pos, rot, size_i);
     pos.iter_mut().for_each(|dim| *dim *= 0.1);
@@ -681,7 +893,7 @@ enum MaterialGroup {
     HeavyMetal,
     Rock,
     Unphysical,
-    Reserved(u8)
+    Reserved(u8),
 }
 
 impl From<PaletteIndex> for MaterialGroup {
@@ -706,7 +918,7 @@ impl From<PaletteIndex> for MaterialGroup {
             21 => HardMetal,
             22 => HardMasonry,
             28 | 29 => Unphysical,
-            n => Reserved(n)
+            n => Reserved(n),
         }
     }
 }
@@ -721,15 +933,13 @@ pub fn compute_hash_n<H: Hash>(to_hash: &H) -> u64 {
 
 #[must_use]
 pub fn hash_n_to_str(n: u64) -> String {
-    base64::encode_config(
-        n.to_le_bytes(),
-        BASE64_CONFIG)
+    base64::encode_config(n.to_le_bytes(), BASE64_CONFIG)
 }
 
 fn hash_str_to_n(string: &str) -> Result<u64, ()> {
     match base64::decode_config(string, BASE64_CONFIG) {
         Ok(bytes) => Ok(u64::from_le_bytes(bytes.try_into().map_err(|_| ())?)),
-        Err(_) => Err(())
+        Err(_) => Err(()),
     }
 }
 
@@ -741,127 +951,212 @@ pub mod transform_shape_tests {
     use super::*;
 
     fn rot(x: f32, y: f32, z: f32) -> [f32; 4] {
-        let quat = UnitQuaternion::from_euler_angles(x.to_radians(), y.to_radians(), z.to_radians());
+        let quat =
+            UnitQuaternion::from_euler_angles(x.to_radians(), y.to_radians(), z.to_radians());
         [quat.i, quat.j, quat.k, quat.w]
     }
 
     #[test]
     fn at_origin_no_rotation() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.5, 0.0, 0.5], rot: [-0.7071068, 0.0, 0.0, 0.7071068] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.5, 0.0, 0.5],
+                    rot: [-0.7071068, 0.0, 0.0, 0.7071068]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0., 0., 0.],
                 rot: rot(0., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn at_origin_45_x() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.5, -0.3535534, 0.35355335], rot: [-0.38268343, 0.0, 0.0, 0.92387956] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.5, -0.3535534, 0.35355335],
+                    rot: [-0.38268343, 0.0, 0.0, 0.92387956]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0., 0., 0.],
                 rot: rot(45., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn at_origin_45_y() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [0.000000059604645, 0.0, 0.70710677], rot: [-0.6532815, 0.27059808, 0.27059808, 0.6532815] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [0.000000059604645, 0.0, 0.70710677],
+                    rot: [-0.6532815, 0.27059808, 0.27059808, 0.6532815]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0., 0., 0.],
                 rot: rot(0., 45., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn at_origin_90_y() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [0.5, 0.0, 0.49999994], rot: [-0.5, 0.5, 0.5, 0.5] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [0.5, 0.0, 0.49999994],
+                    rot: [-0.5, 0.5, 0.5, 0.5]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0., 0., 0.],
                 rot: rot(0., 90., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn at_origin_20_z() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.4698462, -0.1710101, 0.4999998], rot: [-0.6963643, -0.12278781, 0.12278781, 0.6963643] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.4698462, -0.1710101, 0.4999998],
+                    rot: [-0.6963643, -0.12278781, 0.12278781, 0.6963643]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0., 0., 0.],
                 rot: rot(0., 0., 20.)
-            })
+            }
+        )
     }
 
     #[test]
     fn at_origin_45_45_45() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [0.17677675, -0.60355335, 0.32322317], rot: [-0.19134167, 0.19134174, 0.46193975, 0.8446232] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [0.17677675, -0.60355335, 0.32322317],
+                    rot: [-0.19134167, 0.19134174, 0.46193975, 0.8446232]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0., 0., 0.],
                 rot: rot(45., 45., 45.)
-            })
+            }
+        )
     }
 
     #[test]
     fn positive_x() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [1.5, 0.0, 0.5], rot: [-0.7071068, 0.0, 0.0, 0.7071068] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [1.5, 0.0, 0.5],
+                    rot: [-0.7071068, 0.0, 0.0, 0.7071068]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [2.0, 0.0, 0.0],
                 rot: rot(0., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn negative_x() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-2.5, 0.0, 0.5], rot: [-0.7071068, 0.0, 0.0, 0.7071068] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-2.5, 0.0, 0.5],
+                    rot: [-0.7071068, 0.0, 0.0, 0.7071068]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [-2.0, 0.0, 0.0],
                 rot: rot(0., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn odd_z() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.5, 0.0, 1.0], rot: [-0.7071068, 0.0, 0.0, 0.7071068] }, [10, 1, 1]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.5, 0.0, 1.0],
+                    rot: [-0.7071068, 0.0, 0.0, 0.7071068]
+                },
+                [10, 1, 1]
+            ),
             Transform {
                 pos: [0.0, 0.0, 1.0],
                 rot: rot(0., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn odd_negative_z() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.5, 0.0, -1.0], rot: [-0.7071068, 0.0, 0.0, 0.7071068] }, [10, 1, 1]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.5, 0.0, -1.0],
+                    rot: [-0.7071068, 0.0, 0.0, 0.7071068]
+                },
+                [10, 1, 1]
+            ),
             Transform {
                 pos: [0.0, 0.0, -1.0],
                 rot: rot(0., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn odd_at_origin() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.4, 0.0, 0.1], rot: [-0.7071068, 0.0, 0.0, 0.7071068] }, [9, 3, 7]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.4, 0.0, 0.1],
+                    rot: [-0.7071068, 0.0, 0.0, 0.7071068]
+                },
+                [9, 3, 7]
+            ),
             Transform {
                 pos: [0.0, 0.0, 0.0],
                 rot: rot(0., 0., 0.)
-            })
+            }
+        )
     }
 
     #[test]
     fn origin_xy_45() {
-        assert_relative_eq!(transform_shape(&Transform {
-            pos: [-0.10355337, -0.3535534, 0.6035534], rot: [-0.35355338, 0.35355344, 0.1464466, 0.8535534] }, [10, 10, 10]),
+        assert_relative_eq!(
+            transform_shape(
+                &Transform {
+                    pos: [-0.10355337, -0.3535534, 0.6035534],
+                    rot: [-0.35355338, 0.35355344, 0.1464466, 0.8535534]
+                },
+                [10, 10, 10]
+            ),
             Transform {
                 pos: [0.0, 0.0, 0.0],
                 rot: rot(45., 45., 0.)
-            })
+            }
+        )
     }
 }

@@ -1,26 +1,37 @@
 use std::convert::TryInto;
+
 use building_blocks::{
     core::prelude::*,
-    mesh::{greedy_quads, padded_greedy_quads_chunk_extent, GreedyQuadsBuffer, IsOpaque, MergeVoxel},
+    mesh::{
+        greedy_quads, padded_greedy_quads_chunk_extent, GreedyQuadsBuffer, IsOpaque, MergeVoxel,
+    },
     storage::prelude::*,
 };
-use crate::{Palette, PaletteIndex, format::Shape};
+
+use crate::{format::Shape, Palette, PaletteIndex};
 
 impl<'a> Shape<'a> {
     #[must_use]
     pub fn to_mesh(&self, palettes: &[Palette]) -> (Array3<PaletteIndex>, GreedyQuadsBuffer) {
-        let size: [i32; 3] = self.voxels.size.map(|dim| dim.try_into().expect("shape size too large"));
+        let size: [i32; 3] = self
+            .voxels
+            .size
+            .map(|dim| dim.try_into().expect("shape size too large"));
         let extent = padded_greedy_quads_chunk_extent(&ExtentN {
             minimum: PointN([0, 0, 0]),
-            shape: PointN(size)
+            shape: PointN(size),
         });
         let mut array = Array3::fill(extent, PaletteIndex(0, false));
+        #[rustfmt::skip]
         let is_glass = match palettes.get(self.palette as usize) {
-            Some(palette) => palette.materials.iter().map(|material| material.rgba.0[3] < 1.0).collect::<Vec<_>>().try_into().unwrap(),
+            Some(palette) => palette.materials.iter()
+                .map(|material| material.rgba.0[3] < 1.0)
+                .collect::<Vec<_>>().try_into().unwrap(),
             None => [false; 256],
         };
         for (coord, palette_index) in self.iter_voxels() {
-            *array.get_mut(PointN(coord)) = PaletteIndex(palette_index, is_glass[palette_index as usize]);
+            *array.get_mut(PointN(coord)) =
+                PaletteIndex(palette_index, is_glass[palette_index as usize]);
         }
         let mut buffer = GreedyQuadsBuffer::new(extent);
         greedy_quads(&array, &extent, &mut buffer);
@@ -47,4 +58,3 @@ impl IsOpaque for PaletteIndex {
         !self.1
     }
 }
-

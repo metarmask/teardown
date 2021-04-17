@@ -1,8 +1,16 @@
-use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::TryInto, fmt::{self, Formatter}, hash::{Hash, Hasher}, iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip}, mem, slice::ArrayChunks};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    fmt::{self, Formatter},
+    hash::{Hash, Hasher},
+    iter::{self, Copied, Filter, FlatMap, Repeat, Take, Zip},
+    mem,
+    slice::ArrayChunks,
+};
+
 use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
-#[cfg(feature="serde")]
-use serde_crate::Serialize;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
 #[derive(Debug, Clone, Parse)]
@@ -17,15 +25,15 @@ pub struct Scene<'a> {
     pub spawnpoint: Transform,
     pub player: Player,
     pub environment: Environment<'a>,
-    #[structr(len="u32")]
-    pub boundary_vertices: Vec::<BoundaryVertex>,
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
+    pub boundary_vertices: Vec<BoundaryVertex>,
+    #[structr(len = "u32")]
     pub fires: Vec<Fire>,
-    #[structr(len="u32")]
-    pub palettes: Vec::<Palette<'a>>,
+    #[structr(len = "u32")]
+    pub palettes: Vec<Palette<'a>>,
     pub registry: Registry<'a>,
-    #[structr(len="u32")]
-    pub entities: Vec::<Entity<'a>>,
+    #[structr(len = "u32")]
+    pub entities: Vec<Entity<'a>>,
 }
 
 impl<'a> Scene<'a> {
@@ -43,7 +51,7 @@ pub struct Fire {
     pub max_time: f32,
     pub time: f32,
     #[doc(hidden)]
-    pub z_u8_6: [u8; 6]
+    pub z_u8_6: [u8; 6],
 }
 
 pub mod light {
@@ -68,12 +76,12 @@ pub mod light {
         pub z1_f32: f32,
         #[doc(hidden)]
         pub z_u8_17: [u8; 13],
-        pub z2_f32: f32,
         #[doc(hidden)]
+        pub z2_f32: f32,
         pub sound: Sound<'a>,
         pub glare: f32,
     }
-    
+
     #[derive(Debug, Clone, PartialEq, Eq, Parse)]
     #[repr(u8)]
     pub enum Kind {
@@ -83,7 +91,7 @@ pub mod light {
         Area = 4,
     }
 }
-pub use light::{Light, Kind as LightKind};
+pub use light::{Kind as LightKind, Light};
 
 pub mod joint {
     use super::*;
@@ -105,10 +113,12 @@ pub mod joint {
         #[doc(hidden)]
         pub z_f32_2: [f32; 2],
         pub size: f32,
-        #[structr(parse="Ok(if kind == JointKind::Rope { Some(parser.parse()?) } else { None })")]
-        pub rope: Option<Rope>
+        #[structr(
+            parse = "Ok(if kind == JointKind::Rope { Some(parser.parse()?) } else { None })"
+        )]
+        pub rope: Option<Rope>,
     }
-    
+
     #[derive(Debug, Clone, PartialEq, Eq, Parse)]
     #[repr(u32)]
     pub enum Kind {
@@ -117,7 +127,7 @@ pub mod joint {
         Prismatic = 3,
         Rope = 4,
     }
-    
+
     #[derive(Debug, Clone, Parse)]
     pub struct Rope {
         pub rgba: Rgba,
@@ -128,17 +138,17 @@ pub mod joint {
         pub z_f32_2: [f32; 2],
         #[doc(hidden)]
         pub z_u8: u8,
-        #[structr(len="u32")]
-        pub knots: Vec::<Knot>,
+        #[structr(len = "u32")]
+        pub knots: Vec<Knot>,
     }
-    
+
     #[derive(Debug, Clone, Parse)]
     pub struct Knot {
         pub from: [f32; 3],
         pub to: [f32; 3],
     }
 }
-pub use joint::{Joint, Rope, Knot, Kind as JointKind};
+pub use joint::{Joint, Kind as JointKind, Knot, Rope};
 
 #[derive(Debug, Clone, Parse)]
 pub struct Material {
@@ -183,14 +193,14 @@ pub enum MaterialKind {
     HardMetal = 11,
     HardMasonry = 12,
     Unknown13 = 13,
-    Unphysical = 14
+    Unphysical = 14,
 }
 
 pub struct SelfAndChildrenIter<'a> {
     entity: &'a Entity<'a>,
     returned_self: bool,
     child_i: usize,
-    child_children: Option<Box<SelfAndChildrenIter<'a>>>
+    child_children: Option<Box<SelfAndChildrenIter<'a>>>,
 }
 
 impl<'a> Iterator for SelfAndChildrenIter<'a> {
@@ -198,13 +208,16 @@ impl<'a> Iterator for SelfAndChildrenIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.returned_self {
-            self.child_children.as_mut().and_then(Iterator::next).or_else(|| {
-                self.entity.children.get(self.child_i).and_then(|child| {
-                    self.child_i += 1;
-                    self.child_children = Some(Box::new(child.self_and_all_children()));
-                    self.child_children.as_mut().unwrap().next()
+            self.child_children
+                .as_mut()
+                .and_then(Iterator::next)
+                .or_else(|| {
+                    self.entity.children.get(self.child_i).and_then(|child| {
+                        self.child_i += 1;
+                        self.child_children = Some(Box::new(child.self_and_all_children()));
+                        self.child_children.as_mut().unwrap().next()
+                    })
                 })
-            })
         } else {
             self.returned_self = true;
             Some(self.entity)
@@ -220,10 +233,10 @@ pub struct Entity<'a> {
     pub desc: &'a str,
     #[structr(parse = "EntityKind::parse(parser, kind_byte.into())")]
     pub kind: EntityKind<'a>,
-    #[structr(len="u32")]
-    pub children: Vec::<Entity<'a>>,
-    #[structr(eq="[0xef, 0xbe,0xef, 0xbeu8]")]
-    beef_beef: [u8; 4]
+    #[structr(len = "u32")]
+    pub children: Vec<Entity<'a>>,
+    #[structr(eq = "[0xef, 0xbe,0xef, 0xbeu8]")]
+    beef_beef: [u8; 4],
 }
 
 impl<'a> Entity<'a> {
@@ -260,7 +273,7 @@ impl<'a> Entity<'a> {
             entity: &self,
             child_i: 0,
             returned_self: false,
-            child_children: None
+            child_children: None,
         }
     }
 }
@@ -277,7 +290,7 @@ pub enum EntityKind<'a> {
     Wheel(Wheel<'a>),
     Joint(Joint),
     Script(Script<'a>),
-    Light(Light<'a>)
+    Light(Light<'a>),
 }
 
 impl<'a> EntityKind<'a> {
@@ -292,7 +305,8 @@ impl<'a> EntityKind<'a> {
             EntityKind::Trigger(trigger) => &trigger.transform,
             EntityKind::Location(location) => &location.transform,
             EntityKind::Light(light) => &light.transform,
-            /*EntityKind::Failed(_) | */EntityKind::Joint(_) | EntityKind::Wheel(_) | EntityKind::Script(_) => return None
+            /* EntityKind::Failed(_) | */
+            EntityKind::Joint(_) | EntityKind::Wheel(_) | EntityKind::Script(_) => return None,
         })
     }
 
@@ -309,7 +323,7 @@ impl<'a> EntityKind<'a> {
             EntityKind::Joint(joint) => &joint.z_u8,
             EntityKind::Light(light) => &light.z_u8_start,
             EntityKind::Wheel(wheel) => &wheel.z_u8_start,
-            EntityKind::Script(script) => &script.z_u8_start
+            EntityKind::Script(script) => &script.z_u8_start,
         }
     }
 }
@@ -331,8 +345,8 @@ pub struct Vehicle<'a> {
     pub angular_velocity: [f32; 3],
     #[doc(hidden)]
     pub z_f32_not_health: f32,
-    #[structr(len="u32")]
-    pub wheel_handles: Vec::<u32>,
+    #[structr(len = "u32")]
+    pub wheel_handles: Vec<u32>,
     // Split off to help with compile times
     pub properties: VehicleProperties<'a>,
     #[doc(hidden)]
@@ -349,14 +363,14 @@ pub struct Vehicle<'a> {
     pub z2_u8: u8,
     #[doc(hidden)]
     pub z7_f32_eq_0: f32,
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
     pub refs: Vec<u32>,
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
     pub exhausts: Vec<Exhaust>,
     // pub what: [u8; 4],
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
     pub vitals: Vec<Vital>,
-    #[structr(parse="guess_arm_rot(parser)")]
+    #[structr(parse = "guess_arm_rot(parser)")]
     pub arm_rot: Option<f32>,
 }
 
@@ -399,7 +413,7 @@ pub struct Vital {
     #[doc(hidden)]
     pub z_f32: f32,
     pub pos: [f32; 3],
-    pub shape_index: u32
+    pub shape_index: u32,
 }
 
 #[derive(Debug, Clone, Parse)]
@@ -418,16 +432,15 @@ pub struct Water {
     pub ripple: f32,
     pub motion: f32,
     pub foam: f32,
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
     pub boundary_vertices: Vec<BoundaryVertex>,
 }
 
 #[derive(Debug, Clone, Parse)]
-pub struct TintTable<'a>(#[cfg_attr(feature="serde", serde(serialize_with = "<[_]>::serialize"))] &'a [u8; 256]);
+pub struct TintTable<'a>(&'a [u8; 256]);
 
 #[derive(Clone, Parse)]
 pub struct Palette<'a> {
-    #[cfg_attr(feature="serde", serde(serialize_with = "<[_]>::serialize"))]
     pub materials: [Material; 256],
     pub tint_tables: [TintTable<'a>; 8],
     pub byte: u8,
@@ -461,10 +474,10 @@ pub struct Script<'a> {
     #[doc(hidden)]
     pub z_u8_4: [u8; 4],
     pub table: LuaTable<'a>,
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
     pub entity_handles: Vec<u32>,
-    #[structr(len="u32")]
-    pub sounds: Vec::<ScriptSound<'a>>,
+    #[structr(len = "u32")]
+    pub sounds: Vec<ScriptSound<'a>>,
 }
 
 #[derive(Debug, Clone, Parse)]
@@ -542,7 +555,7 @@ pub struct Trigger<'a> {
     pub sphere_radius: f32,
     pub half_cuboid: [f32; 3],
     pub polygon_extrusion: f32,
-    #[structr(len="u32")]
+    #[structr(len = "u32")]
     pub polygon_vertices: Vec<BoundaryVertex>,
     pub sound: TriggerSound<'a>,
 }
@@ -581,7 +594,6 @@ pub struct Wheel<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
     #[doc(hidden)]
-    #[cfg_attr(feature="serde", serde(serialize_with = "<[_]>::serialize"))]
     pub z_u8_108: &'a [u8; 108],
 }
 
@@ -725,7 +737,7 @@ impl fmt::Debug for LuaValue<'_> {
             LuaValue::Boolean(ref v) => v,
             LuaValue::Number(ref v) => v,
             LuaValue::Table(ref v) => v,
-            LuaValue::String(ref v) => v
+            LuaValue::String(ref v) => v,
         };
         dbg.fmt(f)
     }
@@ -747,7 +759,7 @@ impl<'p> Parse<'p> for LuaValue<'p> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LuaTable<'a>(HashMap::<LuaValue<'a>, LuaValue<'a>>);
+pub struct LuaTable<'a>(HashMap<LuaValue<'a>, LuaValue<'a>>);
 
 impl<'a> Hash for LuaTable<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -765,10 +777,10 @@ impl<'p> Parse<'p> for LuaTable<'p> {
             let i = parser.i;
             let lua_type: u32 = parser.parse()?;
             if lua_type == 0 {
-                return Ok(LuaTable(entries))
+                return Ok(LuaTable(entries));
             }
             parser.i = i;
-                entries.insert(parser.parse()?, parser.parse()?);
+            entries.insert(parser.parse()?, parser.parse()?);
         }
     }
 }
@@ -835,12 +847,12 @@ impl Default for Transform {
     fn default() -> Self {
         Transform {
             pos: [0., 0., 0.],
-            rot: [0., 0., 0., 1.]
+            rot: [0., 0., 0., 1.],
         }
     }
 }
 
-#[cfg(feature="convert_nalgebra")]
+#[cfg(feature = "convert_nalgebra")]
 mod convert_nalgebra {
     use nalgebra::{Isometry3, Point3, Quaternion, UnitQuaternion};
 
@@ -850,20 +862,26 @@ mod convert_nalgebra {
         pub fn as_nalegbra_pair(&self) -> (Point3<f32>, UnitQuaternion<f32>) {
             (
                 Point3::from_slice(&self.pos),
-                UnitQuaternion::from_quaternion(Quaternion::from_parts(self.rot[3], Point3::from_slice(&self.rot[0..3]).coords))
+                UnitQuaternion::from_quaternion(Quaternion::from_parts(
+                    self.rot[3],
+                    Point3::from_slice(&self.rot[0..3]).coords,
+                )),
             )
         }
     }
-    
+
     impl Into<Isometry3<f32>> for Transform {
         fn into(self) -> Isometry3<f32> {
             Isometry3 {
                 translation: Point3::from_slice(&self.pos).coords.into(),
-                rotation: UnitQuaternion::from_quaternion(Quaternion::from_parts(self.rot[3], Point3::from_slice(&self.rot[0..3]).coords))
+                rotation: UnitQuaternion::from_quaternion(Quaternion::from_parts(
+                    self.rot[3],
+                    Point3::from_slice(&self.rot[0..3]).coords,
+                )),
             }
         }
     }
-    
+
     impl From<Isometry3<f32>> for Transform {
         fn from(isometry: Isometry3<f32>) -> Self {
             Transform {
@@ -875,7 +893,7 @@ mod convert_nalgebra {
                     let y = rot.j;
                     let z = rot.k;
                     [x, y, z, w]
-                }
+                },
             }
         }
     }
@@ -890,7 +908,7 @@ mod convert_nalgebra {
                     let y = rot.j;
                     let z = rot.k;
                     [x, y, z, w]
-                }
+                },
             }
         }
     }
@@ -906,7 +924,10 @@ impl AbsDiffEq for Transform {
     }
 
     fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        self.pos.iter().chain(self.rot.iter()).zip(other.pos.iter().chain(other.rot.iter()))
+        self.pos
+            .iter()
+            .chain(self.rot.iter())
+            .zip(other.pos.iter().chain(other.rot.iter()))
             .all(|(a, b)| a.abs_diff_eq(b, epsilon))
     }
 }
@@ -916,8 +937,16 @@ impl RelativeEq for Transform {
         f32::default_max_relative() * TOLERANCE_ADJUSTMENT
     }
 
-    fn relative_eq(&self, other: &Self, epsilon: Self::Epsilon, max_relative: Self::Epsilon) -> bool {
-        self.pos.iter().chain(self.rot.iter()).zip(other.pos.iter().chain(other.rot.iter()))
+    fn relative_eq(
+        &self,
+        other: &Self,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        self.pos
+            .iter()
+            .chain(self.rot.iter())
+            .zip(other.pos.iter().chain(other.rot.iter()))
             .all(|(a, b)| a.relative_eq(b, epsilon, max_relative))
     }
 }
@@ -960,8 +989,7 @@ impl<'a> Shape<'a> {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Voxels<'a> {
     pub size: [u32; 3],
-    #[cfg_attr(feature="serde_format", serde(with="serde_bytes"))]
-    pub palette_index_runs: Cow<'a, [u8]>
+    pub palette_index_runs: Cow<'a, [u8]>,
 }
 
 impl<'p> Parse<'p> for Voxels<'p> {
@@ -970,35 +998,45 @@ impl<'p> Parse<'p> for Voxels<'p> {
         let size: [u32; 3] = parser.parse()?;
         let volume = size[0] * size[1] * size[2];
         Ok(if volume == 0 {
-            Self { size, palette_index_runs: Cow::Borrowed(&[]) }
+            Self {
+                size,
+                palette_index_runs: Cow::Borrowed(&[]),
+            }
         } else {
             let n = parser.parse::<u32>()? as usize;
-            Self { size, palette_index_runs: Cow::Borrowed(parser.take_dynamically(n)?) }
+            Self {
+                size,
+                palette_index_runs: Cow::Borrowed(parser.take_dynamically(n)?),
+            }
         })
     }
 }
 
 pub struct BoxIter<I>
-where I: PrimInt {
+where I: PrimInt
+{
     size: [I; 3],
     current: [I; 3],
     order: [usize; 3],
-    done: bool
+    done: bool,
 }
 
 impl<I> Iterator for BoxIter<I>
-where I: PrimInt + std::ops::AddAssign {
+where I: PrimInt + std::ops::AddAssign
+{
     type Item = [I; 3];
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.done { return None }
+        if self.done {
+            return None;
+        }
         let to_return = Some(self.current);
         for &dim_i in &self.order {
             self.current[dim_i] += I::one();
             if self.current[dim_i] >= self.size[dim_i] {
                 self.current[dim_i] = I::zero();
             } else {
-                return to_return
+                return to_return;
             }
         }
         self.done = true;
@@ -1007,10 +1045,19 @@ where I: PrimInt + std::ops::AddAssign {
 }
 
 impl<I> BoxIter<I>
-where I: PrimInt {
+where I: PrimInt
+{
     pub fn new(size: [I; 3], order: [usize; 3]) -> BoxIter<I> {
-        assert_eq!(order.iter().copied().collect::<HashSet<_>>(), (0..3).collect());
-        BoxIter { size, order, current: [I::zero(); 3], done: false }
+        assert_eq!(
+            order.iter().copied().collect::<HashSet<_>>(),
+            (0..3).collect()
+        );
+        BoxIter {
+            size,
+            order,
+            current: [I::zero(); 3],
+            done: false,
+        }
     }
 }
 
@@ -1022,7 +1069,19 @@ impl<'a> Voxels<'a> {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct VoxelIter<'a>(Filter<Zip<BoxIter<i32>, FlatMap<Copied<ArrayChunks<'a, u8, 2>>, Take<Repeat<u8>>, fn([u8; 2]) -> Take<Repeat<u8>>>>, fn(&([i32; 3], u8)) -> bool>);
+pub struct VoxelIter<'a>(
+    Filter<
+        Zip<
+            BoxIter<i32>,
+            FlatMap<
+                Copied<ArrayChunks<'a, u8, 2>>,
+                Take<Repeat<u8>>,
+                fn([u8; 2]) -> Take<Repeat<u8>>,
+            >,
+        >,
+        fn(&([i32; 3], u8)) -> bool,
+    >,
+);
 
 fn flat_map_voxel_data_chunk([n_times, palette_index]: [u8; 2]) -> Take<Repeat<u8>> {
     iter::repeat(palette_index).take(n_times as usize + 1)
@@ -1037,12 +1096,13 @@ impl<'a> VoxelIter<'a> {
     fn new_from_parts(size: &'a [u32; 3], compressed_palette_indices: &'a [u8]) -> Self {
         VoxelIter(
             BoxIter::new(size.map(|dim| dim as i32), [0, 1, 2])
-            .zip(
-                compressed_palette_indices.array_chunks::<2>()
-                .copied()
-                .flat_map(flat_map_voxel_data_chunk as fn([u8; 2]) -> Take<Repeat<u8>>)
-            )
-            .filter(|(_, palette_index)| *palette_index != 0)
+                .zip(
+                    compressed_palette_indices
+                        .array_chunks::<2>()
+                        .copied()
+                        .flat_map(flat_map_voxel_data_chunk as fn([u8; 2]) -> Take<Repeat<u8>>),
+                )
+                .filter(|(_, palette_index)| *palette_index != 0),
         )
     }
 }
@@ -1059,7 +1119,10 @@ impl fmt::Debug for Voxels<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("VoxelData")
             .field("size", &self.size)
-            .field("compressed_voxel_indices", &self.palette_index_runs[0..usize::min(8, self.palette_index_runs.len())].to_vec())
-        .finish()
+            .field(
+                "compressed_voxel_indices",
+                &self.palette_index_runs[0..usize::min(8, self.palette_index_runs.len())].to_vec(),
+            )
+            .finish()
     }
 }

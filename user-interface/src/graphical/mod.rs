@@ -1,14 +1,24 @@
 #![allow(clippy::default_trait_access)] // Default UI state is irrelevant
-mod style;
 mod alphanum_ord;
+mod style;
 
-use std::{fmt::{self, Formatter, Debug}, fs, mem, path::PathBuf, sync::{Arc, Mutex}};
-use iced::{Align, Application, Button, Column, Command, Element, Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment, button, executor, scrollable};
-use teardown_bin_format::{OwnedScene, Scene, parse_file};
+use std::{
+    fmt::{self, Debug, Formatter},
+    fs, mem,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+
+use iced::{
+    button, executor, scrollable, Align, Application, Button, Column, Command, Element, Length,
+    Row, Rule, Scrollable, Space, Text, VerticalAlignment,
+};
 use owning_ref::OwningHandle;
+use teardown_bin_format::{parse_file, OwnedScene, Scene};
 use teardown_editor_format::{SceneWriterBuilder, VoxStore};
-use crate::{Directories, find_teardown_dirs};
+
 use self::alphanum_ord::AlphanumericOrd;
+use crate::{find_teardown_dirs, Directories};
 
 pub struct App {
     dirs: Directories,
@@ -17,13 +27,13 @@ pub struct App {
     selected_level: Option<usize>,
     vox_store: Arc<Mutex<VoxStore>>,
     button_help: button::State,
-    scroll_state: scrollable::State
+    scroll_state: scrollable::State,
 }
 
 enum Load<T> {
     None,
     Loading,
-    Loaded(T)
+    Loaded(T),
 }
 
 struct Level {
@@ -31,12 +41,12 @@ struct Level {
     scene: Load<OwningHandle<Vec<u8>, std::boxed::Box<Scene<'static>>>>,
     button_select: button::State,
     button_to_xml: button::State,
-    button_to_blender: button::State
+    button_to_blender: button::State,
 }
 
 struct LevelViews<'a> {
     button: Button<'a, <App as Application>::Message>,
-    side: Option<Element<'a, LevelMessage>>
+    side: Option<Element<'a, LevelMessage>>,
 }
 
 impl Level {
@@ -44,9 +54,11 @@ impl Level {
         Self {
             path,
             scene: Load::None,
-            button_select: Default::default(), button_to_xml: Default::default(), button_to_blender: Default::default() }
+            button_select: Default::default(),
+            button_to_xml: Default::default(),
+            button_to_blender: Default::default(),
+        }
     }
-
 
     fn name(&self) -> String {
         let mut path = self.path.clone();
@@ -54,6 +66,7 @@ impl Level {
         path.file_name().unwrap().to_string_lossy().to_string()
     }
 
+    #[rustfmt::skip]
     fn view(&mut self, selected: bool) -> LevelViews {
         let name = self.name();
         let side = if selected {
@@ -97,32 +110,50 @@ impl Level {
         LevelViews { button, side }
     }
 
-    fn update(&mut self, dirs: &Directories, vox_store: &Arc<Mutex<VoxStore>>, message: LevelMessage) -> Command<LevelMessage> {
+    fn update(
+        &mut self,
+        dirs: &Directories,
+        vox_store: &Arc<Mutex<VoxStore>>,
+        message: LevelMessage,
+    ) -> Command<LevelMessage> {
         match message {
-            LevelMessage::ConvertXML => {
-                match mem::replace(&mut self.scene, Load::Loading) {
-                    Load::Loaded(scene) => {
-                        let dirs = dirs.to_owned();
-                        let vox_store = vox_store.clone();
-                        return Command::perform(async move {
+            LevelMessage::ConvertXML => match mem::replace(&mut self.scene, Load::Loading) {
+                Load::Loaded(scene) => {
+                    let dirs = dirs.to_owned();
+                    let vox_store = vox_store.clone();
+                    return Command::perform(
+                        async move {
                             let dirs = dirs;
                             let scene = scene;
                             SceneWriterBuilder::default()
                                 .vox_store(vox_store.clone())
                                 .mod_dir(dirs.mods.join("converted"))
-                                .scene(&scene).build().unwrap().write_scene().unwrap();
+                                .scene(&scene)
+                                .build()
+                                .unwrap()
+                                .write_scene()
+                                .unwrap();
                             vox_store.lock().unwrap().write_dirty().unwrap();
                             scene
-                        }, |scene| LevelMessage::XMLConverted(Arc::new(scene)))
-                    }
-                    other => self.scene = other
+                        },
+                        |scene| LevelMessage::XMLConverted(Arc::new(scene)),
+                    );
                 }
-            }
+                other => self.scene = other,
+            },
             LevelMessage::SceneLoaded(scene) => {
-                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) { ok.expect("error loading scene") } else { panic!("Arc::try_unwrap") })
+                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) {
+                    ok.expect("error loading scene")
+                } else {
+                    panic!("Arc::try_unwrap")
+                })
             }
             LevelMessage::XMLConverted(scene) => {
-                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) { ok } else { panic!("Arc::try_unwrap") })
+                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) {
+                    ok
+                } else {
+                    panic!("Arc::try_unwrap")
+                })
             }
         }
 
@@ -131,13 +162,13 @@ impl Level {
 
     fn load_scene(&mut self, force: bool) -> Command<LevelMessage> {
         let no_scene = matches!(self.scene, Load::None);
-        
+
         if no_scene || force {
             let path = self.path.to_owned();
             self.scene = Load::Loading;
-            Command::perform(async {
-                parse_file(path)
-            }, |w| LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| err.to_string()))))
+            Command::perform(async { parse_file(path) }, |w| {
+                LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| err.to_string())))
+            })
         } else {
             Command::none()
         }
@@ -157,7 +188,7 @@ pub enum Message {
     SelectLevel(usize),
     // LoadError(String),
     Help,
-    HelpQuit
+    HelpQuit,
 }
 
 impl Debug for Message {
@@ -173,23 +204,26 @@ impl Application for App {
 
     fn new(_flags: ()) -> (Self, Command<Self::Message>) {
         let dirs = find_teardown_dirs().unwrap();
-        let mut levels = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
-            .map(|res| res.map(|dir_entry| {
-                Level::new(dir_entry.path())
-            }))
-            .collect::<Result<Vec<_>, _>>().unwrap();
+        let mut levels = fs::read_dir(dirs.main.join("data").join("bin"))
+            .unwrap()
+            .map(|res| res.map(|dir_entry| Level::new(dir_entry.path())))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         levels.sort_by_cached_key(|x| AlphanumericOrd(x.name()));
         levels.insert(0, Level::new(dirs.progress.join("quicksave.bin")));
-        (App {
-            // levels: levels.into_iter().map(|level| ByAddress(Arc::new(level))).collect(),
-            levels,
-            n_special_levels: 1,
-            selected_level: None,
-            vox_store: VoxStore::new(&dirs.main).unwrap(),
-            dirs,
-            button_help: Default::default(),
-            scroll_state: Default::default()
-        }, Command::none())
+        (
+            App {
+                // levels: levels.into_iter().map(|level| ByAddress(Arc::new(level))).collect(),
+                levels,
+                n_special_levels: 1,
+                selected_level: None,
+                vox_store: VoxStore::new(&dirs.main).unwrap(),
+                dirs,
+                button_help: Default::default(),
+                scroll_state: Default::default(),
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -198,31 +232,34 @@ impl Application for App {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::Level(level, message) => {
-                self.levels.get_mut(level).expect("no level")
-                    .update(&self.dirs, &self.vox_store, message)
-                    .map(move |what| Message::Level(level, what))
-            }
+            Message::Level(level, message) => self
+                .levels
+                .get_mut(level)
+                .expect("no level")
+                .update(&self.dirs, &self.vox_store, message)
+                .map(move |what| Message::Level(level, what)),
             Message::SelectLevel(level) => {
                 let already_selected = self.selected_level == Some(level);
                 self.selected_level = Some(level);
-                self.levels.get_mut(level).unwrap().load_scene(already_selected).map(move |what| Message::Level(level, what))
+                self.levels
+                    .get_mut(level)
+                    .unwrap()
+                    .load_scene(already_selected)
+                    .map(move |what| Message::Level(level, what))
             }
             // Message::LoadError(err) => {
             //     eprintln!("Load error: {:?}", err);
             //     Command::none()
             // }
-            Message::Help => {
-                Command::perform(async move {
-                    open::that("https://github.com/metarmask/teardown").unwrap()
-                }, |_| Message::HelpQuit)
-            }
-            Message::HelpQuit => {
-                Command::none()
-            }
+            Message::Help => Command::perform(
+                async move { open::that("https://github.com/metarmask/teardown").unwrap() },
+                |_| Message::HelpQuit,
+            ),
+            Message::HelpQuit => Command::none(),
         }
     }
 
+    #[rustfmt::skip]
     fn view(&mut self) -> Element<'_, Self::Message> {
         let selected_level = self.selected_level;
         let (level_buttons, mut level_side_views) = self.levels.iter_mut().enumerate().map(|(i, level)| {

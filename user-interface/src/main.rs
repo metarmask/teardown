@@ -1,13 +1,19 @@
 mod graphical;
 
-use std::{collections::HashSet, ffi::OsString, fs, iter, path::{Path, PathBuf}};
-use iced::{Application, Settings};
-use structopt::StructOpt;
-use teardown_bin_format::{EntityKind, parse_file};
-use teardown_editor_format::{VoxStore, SceneWriterBuilder};
+use std::{
+    collections::HashSet,
+    ffi::OsString,
+    fs, iter,
+    path::{Path, PathBuf},
+};
+
 use anyhow::{Context, Result};
-use thiserror::Error;
+use iced::{Application, Settings};
 use steamy_vdf as vdf;
+use structopt::StructOpt;
+use teardown_bin_format::{parse_file, EntityKind};
+use teardown_editor_format::{SceneWriterBuilder, VoxStore};
+use thiserror::Error;
 use Error::UnexpectedVDF as VDFErr;
 
 #[derive(Debug, Error)]
@@ -22,21 +28,33 @@ enum Error {
     #[error("No home directory found")]
     NoHomeDir,
     #[error("Unexpected type/value when reading a Valve KeyValues file (sometimes .vdf)")]
-    UnexpectedVDF
+    UnexpectedVDF,
 }
 
 #[derive(StructOpt)]
 enum Subcommand {
-    ShowVox { vox_file: PathBuf },
-    PrintEnv { bin_file: PathBuf },
-    Convert { bin_file: PathBuf, teardown_folder: PathBuf, mod_folder: PathBuf, level_name: String },
-    ConvertAll { teardown_folder: PathBuf, mods_folder: PathBuf }
+    ShowVox {
+        vox_file: PathBuf,
+    },
+    PrintEnv {
+        bin_file: PathBuf,
+    },
+    Convert {
+        bin_file: PathBuf,
+        teardown_folder: PathBuf,
+        mod_folder: PathBuf,
+        level_name: String,
+    },
+    ConvertAll {
+        teardown_folder: PathBuf,
+        mods_folder: PathBuf,
+    },
 }
 
 #[derive(StructOpt)]
 struct Options {
     #[structopt(subcommand)]
-    command: Option<Subcommand>
+    command: Option<Subcommand>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,19 +68,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // let mut vox_fs_file = File::open(vox_file)?;
                 // let mut vox_file_bytes = Vec::new();
                 // vox_fs_file.read_to_end(&mut vox_file_bytes)?;
-                // let (_, syntaxical_vox_file) = vox::syntax::VoxFile::parse_flat(&vox_file_bytes).unwrap();
-                // let semantic_vox_file = vox::semantic::VoxFile::try_from(syntaxical_vox_file)?;
+                // let (_, syntaxical_vox_file) =
+                // vox::syntax::VoxFile::parse_flat(&vox_file_bytes).unwrap();
+                // let semantic_vox_file =
+                // vox::semantic::VoxFile::try_from(syntaxical_vox_file)?;
                 // println!("{:#?}", semantic_vox_file);
             }
-            Subcommand::Convert { bin_file, teardown_folder, mod_folder, level_name } => {
+            Subcommand::Convert {
+                bin_file,
+                teardown_folder,
+                mod_folder,
+                level_name,
+            } => {
                 let scene = parse_file(bin_file)?;
+                #[rustfmt::skip]
                 SceneWriterBuilder::default()
                     .vox_store(VoxStore::new(teardown_folder).unwrap())
                     .mod_dir(mod_folder)
                     .name(level_name)
-                    .scene(&scene).build().unwrap().write_scene().unwrap();
+                    .scene(&scene)
+                    .build().unwrap()
+                    .write_scene().unwrap();
             }
-            Subcommand::ConvertAll { teardown_folder, mods_folder } => {
+            Subcommand::ConvertAll {
+                teardown_folder,
+                mods_folder,
+            } => {
                 let data_folder = teardown_folder.join("data");
                 let mut created_mods = HashSet::new();
                 let vox_store = VoxStore::new(teardown_folder).unwrap();
@@ -72,27 +103,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("Reading {}", file.file_name().to_string_lossy());
                     let scene = parse_file(file.path())?;
                     let registry = &scene.registry.0;
-                    let mut level_path = PathBuf::from(registry.get("game.levelpath").expect("levels should have game.levelpath registry entry"));
+                    let mut level_path = PathBuf::from(
+                        registry
+                            .get("game.levelpath")
+                            .expect("levels should have game.levelpath registry entry"),
+                    );
                     level_path.set_extension("");
                     // Example: lee
                     let level_name = level_path.file_name().unwrap();
                     // Example: lee_tower
-                    let &level_id = registry.get("game.levelid").expect("levels should have game.levelid registry entry");
-                    if level_id.is_empty() { continue; }
+                    let &level_id = registry
+                        .get("game.levelid")
+                        .expect("levels should have game.levelid registry entry");
+                    if level_id.is_empty() {
+                        continue;
+                    }
                     let mod_dir = mods_folder.join(level_name);
                     if !created_mods.insert(level_name.to_owned()) {
-                        continue
+                        continue;
                     }
                     for entity in scene.iter_entities() {
                         if let EntityKind::Light(light) = &entity.kind {
-                            sound_files.insert(light.sound.path.to_owned() + " " + &light.sound.volume.to_string());
+                            sound_files.insert(
+                                light.sound.path.to_owned() + " " + &light.sound.volume.to_string(),
+                            );
                             // println!("### {}", entity.desc);
-                            // let materials = &scene.palettes[shape.palette as usize].materials;
-                            // for material in materials.iter() {
+                            // let materials = &scene.palettes[shape.palette as
+                            // usize].materials; for
+                            // material in materials.iter() {
                             //     match material.kind {
-                            //         teardown_bin_format::MaterialKind::None => {}
-                            //         kind => {
-                            //             print!("{:?}:{:?} ", kind, material.replacable);
+                            //         teardown_bin_format::MaterialKind::None
+                            // => {}         kind =>
+                            // {
+                            // print!("{:?}:{:?} ", kind, material.replacable);
                             //         }
                             //     }
                             // }
@@ -102,16 +145,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     SceneWriterBuilder::default()
                         .vox_store(vox_store.clone())
                         .mod_dir(mod_dir)
-                        .scene(&scene).build().unwrap().write_scene().unwrap();
-                    
+                        .scene(&scene)
+                        .build()
+                        .unwrap()
+                        .write_scene()
+                        .unwrap();
                 }
                 // println!("{:?}", sound_files);
                 for mod_ in &created_mods {
                     fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
-                    fs::write(mods_folder.join(mod_).join("info.txt"), format!(
-"name = {}
-author = Tuxedo Labs
-description = ", mod_.to_string_lossy()))?;
+                    fs::write(
+                        mods_folder.join(mod_).join("info.txt"),
+                        format!(
+                            "name = {}\
+                            author = Tuxedo Labs\
+                            description = ",
+                            mod_.to_string_lossy()
+                        ),
+                    )?;
                 }
             }
             Subcommand::PrintEnv { bin_file: path } => {
@@ -128,8 +179,12 @@ description = ", mod_.to_string_lossy()))?;
 
 #[cfg(target_os = "windows")]
 fn get_steam_dir_path_through_registry() -> Result<PathBuf> {
-    let registry_key = registry::Hive::CurrentUser.open(r"Software\Valve\Steam", registry::Security::Read).context(Error::SteamPathInRegistry)?;
-    let path = registry_key.value("SteamPath").context(Error::SteamPathInRegistry)?;
+    let registry_key = registry::Hive::CurrentUser
+        .open(r"Software\Valve\Steam", registry::Security::Read)
+        .context(Error::SteamPathInRegistry)?;
+    let path = registry_key
+        .value("SteamPath")
+        .context(Error::SteamPathInRegistry)?;
     if let registry::Data::String(path) = path {
         Ok(path.to_os_string().into())
     } else {
@@ -161,14 +216,22 @@ fn get_steam_dir() -> Result<PathBuf> {
 }
 
 fn get_extra_library_dirs(main_dir: &Path) -> Result<Vec<PathBuf>> {
-    let library_dirs_path = main_dir.join(["steamapps", "libraryfolders.vdf"].iter().collect::<PathBuf>());
+    let library_dirs_path = main_dir.join(
+        ["steamapps", "libraryfolders.vdf"]
+            .iter()
+            .collect::<PathBuf>(),
+    );
     let vdf = steamy_vdf::load(&library_dirs_path)?;
+    #[rustfmt::skip]
     let entries = vdf
-        .as_table().context(VDFErr)?.get("LibraryFolders").context(VDFErr)?
+        .as_table().context(VDFErr)?
+        .get("LibraryFolders").context(VDFErr)?
         .as_table().context(VDFErr)?;
     let mut libraries = Vec::new();
     for (key, value) in entries.iter() {
-        if key.parse::<i32>().is_ok() { libraries.push(value.as_str().context(VDFErr)?.into()) }
+        if key.parse::<i32>().is_ok() {
+            libraries.push(value.as_str().context(VDFErr)?.into())
+        }
     }
     Ok(libraries)
 }
@@ -186,7 +249,7 @@ fn get_steam_library_dirs() -> Result<Vec<PathBuf>> {
 
 struct SteamApp {
     manifest: vdf::Table,
-    library_path: PathBuf
+    library_path: PathBuf,
 }
 
 impl SteamApp {
@@ -194,7 +257,13 @@ impl SteamApp {
         if let Some(user_config) = self.manifest.get("UserConfig") {
             if let Some(override_dest) = user_config.as_table()?.get("platform_override_dest") {
                 if override_dest.as_str()? == "linux" {
-                    return Some(self.library_path.join(["steamapps", "compatdata", self.manifest.get("appid")?.as_str()?, "pfx", "drive_c"].iter().collect::<PathBuf>()))
+                    return Some(
+                        #[rustfmt::skip]
+                        self.library_path.join(
+                            ["steamapps", "compatdata", self.manifest.get("appid")?.as_str()?, "pfx", "drive_c"]
+                            .iter().collect::<PathBuf>(),
+                        ),
+                    );
                 }
             }
         }
@@ -202,13 +271,16 @@ impl SteamApp {
     }
 
     fn install_dir(&self) -> PathBuf {
-        self.library_path.join("steamapps").join("common").join(&self.manifest.get("installdir").unwrap().as_str().unwrap())
+        #[rustfmt::skip]
+        self.library_path.join("steamapps").join("common")
+            .join(&self.manifest.get("installdir").unwrap().as_str().unwrap())
     }
 
     fn user_dir(&self) -> PathBuf {
-        self.compat_drive().map_or_else(|| dirs::home_dir().expect("dirs::home_dir"), |compat_drive| {
-            compat_drive.join("users").join("steamuser")
-        })
+        self.compat_drive().map_or_else(
+            || dirs::home_dir().expect("dirs::home_dir"),
+            |compat_drive| compat_drive.join("users").join("steamuser"),
+        )
     }
 }
 
@@ -219,10 +291,17 @@ fn find_steam_app(app_id: &str) -> Result<SteamApp> {
         for dir_entry in library_dir.join("steamapps").read_dir()? {
             let dir_entry = dir_entry?;
             if dir_entry.file_name() == manifest_file_name {
-                let manifest = steamy_vdf::load(dir_entry.path())?
-                    .as_table().context(VDFErr)?.get("AppState").context(VDFErr)?
-                    .as_table().context(VDFErr)?.to_owned();
-                return Ok(SteamApp { library_path: library_dir, manifest })
+                #[rustfmt::skip]
+                let manifest =
+                    steamy_vdf::load(dir_entry.path())?
+                    .as_table().context(VDFErr)?
+                    .get("AppState").context(VDFErr)?
+                    .as_table().context(VDFErr)?
+                    .to_owned();
+                return Ok(SteamApp {
+                    library_path: library_dir,
+                    manifest,
+                });
             }
         }
     }
@@ -233,7 +312,7 @@ fn find_steam_app(app_id: &str) -> Result<SteamApp> {
 struct Directories {
     mods: PathBuf,
     progress: PathBuf,
-    main: PathBuf
+    main: PathBuf,
 }
 
 fn find_teardown_dirs() -> Result<Directories> {
@@ -241,7 +320,10 @@ fn find_teardown_dirs() -> Result<Directories> {
     let user_dir = steam_app.user_dir();
     Ok(Directories {
         mods: user_dir.join("My Documents").join("Teardown").join("mods"),
-        progress: user_dir.join("Local Settings").join("Application Data").join("Teardown"),
+        progress: user_dir
+            .join("Local Settings")
+            .join("Application Data")
+            .join("Teardown"),
         main: steam_app.install_dir(),
     })
 }
