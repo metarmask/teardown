@@ -6,7 +6,6 @@ use serde_crate::Serialize;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Scene<'a> {
     #[structr(eq = "Scene::MAGIC")]
     magic: [u8; 5],
@@ -38,7 +37,6 @@ impl<'a> Scene<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Fire {
     pub entity_handle: u32,
     pub pos: [f32; 3],
@@ -52,7 +50,6 @@ pub mod light {
     use super::*;
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Light<'a> {
         #[doc(hidden)]
         pub z_u8_start: u8,
@@ -78,7 +75,6 @@ pub mod light {
     }
     
     #[derive(Debug, Clone, PartialEq, Eq, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     #[repr(u8)]
     pub enum Kind {
         Sphere = 1,
@@ -93,7 +89,6 @@ pub mod joint {
     use super::*;
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Joint {
         pub kind: JointKind,
         pub shape_handles: [u32; 2],
@@ -115,7 +110,6 @@ pub mod joint {
     }
     
     #[derive(Debug, Clone, PartialEq, Eq, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     #[repr(u32)]
     pub enum Kind {
         Ball = 1,
@@ -125,7 +119,6 @@ pub mod joint {
     }
     
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Rope {
         pub rgba: Rgba,
         pub float: f32,
@@ -140,7 +133,6 @@ pub mod joint {
     }
     
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Knot {
         pub from: [f32; 3],
         pub to: [f32; 3],
@@ -149,7 +141,6 @@ pub mod joint {
 pub use joint::{Joint, Rope, Knot, Kind as JointKind};
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Material {
     pub kind: MaterialKind,
     pub rgba: Rgba,
@@ -173,7 +164,6 @@ impl Hash for Material {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 #[repr(u8)]
 pub enum MaterialKind {
     None = 0,
@@ -223,7 +213,6 @@ impl<'a> Iterator for SelfAndChildrenIter<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Entity<'a> {
     kind_byte: u8,
     pub handle: u32,
@@ -277,7 +266,6 @@ impl<'a> Entity<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub enum EntityKind<'a> {
     Shape(Shape<'a>),
     Body(Body),
@@ -327,7 +315,6 @@ impl<'a> EntityKind<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Exhaust {
     pub transform: Transform,
     // Values used in built-in levels: 0, 1.5, 2, 3
@@ -335,7 +322,6 @@ pub struct Exhaust {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Vehicle<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -375,7 +361,6 @@ pub struct Vehicle<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct VehicleProperties<'a> {
     #[doc(hidden)]
     pub z_f32_2: [f32; 2],
@@ -409,7 +394,6 @@ fn guess_arm_rot<'p>(parser: &mut Parser<'p>) -> Result<Option<f32>, ParseError<
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Vital {
     pub body_handle: u32,
     #[doc(hidden)]
@@ -419,14 +403,12 @@ pub struct Vital {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct VehicleSound<'a> {
     pub name: &'a str,
     pub pitch: f32,
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Water {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -441,11 +423,9 @@ pub struct Water {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct TintTable<'a>(#[cfg_attr(feature="serde", serde(serialize_with = "<[_]>::serialize"))] &'a [u8; 256]);
 
 #[derive(Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Palette<'a> {
     #[cfg_attr(feature="serde", serde(serialize_with = "<[_]>::serialize"))]
     pub materials: [Material; 256],
@@ -471,7 +451,6 @@ impl<'a> ::core::fmt::Display for Palette<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Script<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -489,7 +468,6 @@ pub struct Script<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Sound<'a> {
     pub path: &'a str,
     pub volume: f32,
@@ -499,7 +477,6 @@ pub mod environment {
     use super::*;
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Environment<'a> {
         pub skybox: Skybox<'a>,
         pub exposure: Exposure,
@@ -512,7 +489,6 @@ pub mod environment {
     }
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Skybox<'a> {
         pub texture: &'a str,
         pub color_intensity: Rgba,
@@ -527,7 +503,6 @@ pub mod environment {
     }
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Sun {
         pub tint_brightness: [f32; 3],
         pub tint: Rgba,
@@ -540,7 +515,6 @@ pub mod environment {
     }
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Fog {
         pub color: Rgba,
         pub start: f32,
@@ -550,7 +524,6 @@ pub mod environment {
     }
 
     #[derive(Debug, Clone, Parse)]
-    #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     pub struct Water {
         pub wetness: f32,
         pub puddle_coverage: f32,
@@ -561,7 +534,6 @@ pub mod environment {
 pub use environment::Environment;
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Trigger<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -576,7 +548,6 @@ pub struct Trigger<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct TriggerSound<'a> {
     pub path: &'a str,
     pub ramp: f32,
@@ -585,7 +556,6 @@ pub struct TriggerSound<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 #[repr(u32)]
 pub enum TriggerGeometryKind {
     Sphere = 1,
@@ -594,7 +564,6 @@ pub enum TriggerGeometryKind {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Body {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -608,7 +577,6 @@ pub struct Body {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Wheel<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -618,7 +586,6 @@ pub struct Wheel<'a> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Exposure {
     pub min: f32,
     pub max: f32,
@@ -626,14 +593,12 @@ pub struct Exposure {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct BoundaryVertex {
     pub x: f32,
     pub z: f32,
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Registry<'a>(pub HashMap<&'a str, &'a str>);
 
 impl<'p> Parse<'p> for Registry<'p> {
@@ -651,7 +616,6 @@ impl<'p> Parse<'p> for Registry<'p> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Location {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -659,7 +623,6 @@ pub struct Location {
 }
 
 #[derive(Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Rgba(pub [f32; 4]);
 
 impl Rgba {
@@ -687,7 +650,6 @@ impl fmt::Debug for Rgba {
 }
 
 #[derive(Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Rgb(pub [f32; 3]);
 
 impl Rgb {
@@ -709,7 +671,6 @@ impl fmt::Debug for Rgb {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Player {
     #[doc(hidden)]
     pub z_i32_3: [i32; 3],
@@ -724,7 +685,6 @@ pub struct Player {
 }
 
 #[derive(Clone, PartialEq, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub enum LuaValue<'a> {
     Boolean(bool),
     Number(f64),
@@ -787,7 +747,6 @@ impl<'p> Parse<'p> for LuaValue<'p> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct LuaTable<'a>(HashMap::<LuaValue<'a>, LuaValue<'a>>);
 
 impl<'a> Hash for LuaTable<'a> {
@@ -815,14 +774,12 @@ impl<'p> Parse<'p> for LuaTable<'p> {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct ScriptSound<'a> {
     pub kind: ScriptSoundKind,
     pub name: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 #[repr(u32)]
 pub enum ScriptSoundKind {
     Normal = 1,
@@ -831,7 +788,6 @@ pub enum ScriptSoundKind {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Screen<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -851,7 +807,6 @@ pub struct Screen<'a> {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Tags<'a>(pub HashMap<&'a str, &'a str>);
 
 impl<'p> Parse<'p> for Tags<'p> {
@@ -869,7 +824,6 @@ impl<'p> Parse<'p> for Tags<'p> {
 }
 
 #[derive(Debug, Clone, Parse, PartialEq)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Transform {
     /// x, y, z
     pub pos: [f32; 3],
@@ -969,7 +923,6 @@ impl RelativeEq for Transform {
 }
 
 #[derive(Debug, Clone, Parse)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Shape<'a> {
     #[doc(hidden)]
     pub z_u8_start: u8,
@@ -1005,7 +958,6 @@ impl<'a> Shape<'a> {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Voxels<'a> {
     pub size: [u32; 3],
     #[cfg_attr(feature="serde_format", serde(with="serde_bytes"))]
