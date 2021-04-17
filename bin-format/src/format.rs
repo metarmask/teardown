@@ -32,8 +32,8 @@ pub struct Scene<'a> {
 impl<'a> Scene<'a> {
     pub const MAGIC: &'static [u8] = &[0x54, 0x44, 0x42, 0x49, 0x4e];
 
-    pub fn iter_entities<'b>(&'a self) -> impl Iterator<Item = &'a Entity> {
-        self.entities.iter().flat_map(|entity| entity.self_and_all_children())
+    pub fn iter_entities(&'a self) -> impl Iterator<Item = &'a Entity> {
+        self.entities.iter().flat_map(Entity::self_and_all_children)
     }
 }
 
@@ -117,7 +117,7 @@ pub mod joint {
     #[derive(Debug, Clone, PartialEq, Eq, Parse)]
     #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
     #[repr(u32)]
-    pub enum JointKind {
+    pub enum Kind {
         Ball = 1,
         Hinge = 2,
         Prismatic = 3,
@@ -146,9 +146,9 @@ pub mod joint {
         pub to: [f32; 3],
     }
 }
-pub use joint::{Joint, Rope, Knot};
+pub use joint::{Joint, Rope, Knot, Kind as JointKind};
 
-#[derive(Clone, Parse)]
+#[derive(Debug, Clone, Parse)]
 #[cfg_attr(feature="serde", derive(Serialize, Deserialize), serde(crate="serde_crate"))]
 pub struct Material {
     pub kind: MaterialKind,
@@ -161,7 +161,7 @@ pub struct Material {
 }
 
 impl Hash for Material {
-    fn hash<H: Hasher>(&self, state: &mut H) -> () {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         self.rgba.hash(state);
         self.shinyness.to_le_bytes().hash(state);
@@ -169,39 +169,6 @@ impl Hash for Material {
         self.reflectivity.to_le_bytes().hash(state);
         self.emission.to_le_bytes().hash(state);
         self.replacable.hash(state);
-    }
-}
-
-impl fmt::Debug for Material {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-#[allow(unused_qualifications)]
-impl ::core::fmt::Display for Material {
-    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-        match *self {
-            Material {
-                kind: ref __self_0_0,
-                rgba: ref __self_0_1,
-                shinyness: ref __self_0_2,
-                metalness: ref __self_0_3,
-                reflectivity: ref __self_0_4,
-                emission: ref __self_0_5,
-                replacable: ref __self_0_6,
-            } => {
-                let mut debug_trait_builder = f.debug_struct("PaletteMaterial");
-                let _ = debug_trait_builder.field("kind", &&(*__self_0_0));
-                let _ = debug_trait_builder.field("rgba", &&(*__self_0_1));
-                let _ = debug_trait_builder.field("shinyness", &&(*__self_0_2));
-                let _ = debug_trait_builder.field("metalness", &&(*__self_0_3));
-                let _ = debug_trait_builder.field("reflectivity", &&(*__self_0_4));
-                let _ = debug_trait_builder.field("emission", &&(*__self_0_5));
-                let _ = debug_trait_builder.field("replacable", &&(*__self_0_6));
-                debug_trait_builder.finish()
-            }
-        }
     }
 }
 
@@ -241,7 +208,7 @@ impl<'a> Iterator for SelfAndChildrenIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.returned_self {
-            self.child_children.as_mut().and_then(|child_children| child_children.next()).or_else(|| {
+            self.child_children.as_mut().and_then(Iterator::next).or_else(|| {
                 self.entity.children.get(self.child_i).and_then(|child| {
                     self.child_i += 1;
                     self.child_children = Some(Box::new(child.self_and_all_children()));
@@ -271,6 +238,7 @@ pub struct Entity<'a> {
 }
 
 impl<'a> Entity<'a> {
+    #[must_use]
     pub fn transform(&self) -> Option<&Transform> {
         self.kind.transform()
     }
@@ -297,7 +265,8 @@ impl From<u8> for EntityKindVariants {
 }
 
 impl<'a> Entity<'a> {
-    pub fn self_and_all_children<'b>(&'b self) -> SelfAndChildrenIter<'b> {
+    #[must_use]
+    pub fn self_and_all_children(&self) -> SelfAndChildrenIter<'_> {
         SelfAndChildrenIter {
             entity: &self,
             child_i: 0,
@@ -324,6 +293,7 @@ pub enum EntityKind<'a> {
 }
 
 impl<'a> EntityKind<'a> {
+    #[must_use]
     pub fn transform(&self) -> Option<&Transform> {
         Some(match self {
             EntityKind::Shape(shape) => &shape.transform,
@@ -338,6 +308,7 @@ impl<'a> EntityKind<'a> {
         })
     }
 
+    #[must_use]
     pub fn z_u8_start(&self) -> u8 {
         *match self {
             EntityKind::Shape(shape) => &shape.z_u8_start,
@@ -491,19 +462,11 @@ impl fmt::Debug for Palette<'_> {
 #[allow(unused_qualifications)]
 impl<'a> ::core::fmt::Display for Palette<'a> {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-        match *self {
-            Palette {
-                materials: ref __self_0_0,
-                tint_tables: ref __self_0_1,
-                byte: ref __self_0_2,
-            } => {
-                let mut debug_trait_builder = f.debug_struct("Palette");
-                let _ = debug_trait_builder.field("materials", &&(*__self_0_0));
-                let _ = debug_trait_builder.field("tint_tables", &&(__self_0_1[0..8]));
-                let _ = debug_trait_builder.field("byte", &&(*__self_0_2));
-                debug_trait_builder.finish()
-            }
-        }
+        let mut struct_ = f.debug_struct("Palette");
+        struct_.field("materials", &self.materials);
+        struct_.field("tint_tables", &(&self.tint_tables[0..8]));
+        struct_.field("byte", &self.byte);
+        struct_.finish()
     }
 }
 
@@ -700,6 +663,8 @@ pub struct Location {
 pub struct Rgba(pub [f32; 4]);
 
 impl Rgba {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[must_use]
     pub fn u8(&self) -> [u8; 4] {
         self.0.map(|channel| (channel * 255.) as u8)
     }
@@ -714,7 +679,7 @@ impl Hash for Rgba {
 impl fmt::Debug for Rgba {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "#")?;
-        for channel in self.u8().iter() {
+        for channel in &self.u8() {
             write!(f, "{:02x}", channel)?;
         }
         Ok(())
@@ -726,6 +691,8 @@ impl fmt::Debug for Rgba {
 pub struct Rgb(pub [f32; 3]);
 
 impl Rgb {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[must_use]
     pub fn u8(&self) -> [u8; 3] {
         self.0.map(|channel| (channel * 255.) as u8)
     }
@@ -734,7 +701,7 @@ impl Rgb {
 impl fmt::Debug for Rgb {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "#")?;
-        for channel in self.u8().iter() {
+        for channel in &self.u8() {
             write!(f, "{:02x}", channel)?;
         }
         Ok(())
@@ -814,7 +781,7 @@ impl<'p> Parse<'p> for LuaValue<'p> {
             3 => LuaValue::Number(parser.parse()?),
             4 => LuaValue::String(parser.parse()?),
             5 => LuaValue::Table(parser.parse()?),
-            other => return Err(parser.error(ParseErrorKind::NoReprIntMatch(other as u64))),
+            other => return Err(parser.error(ParseErrorKind::NoReprIntMatch(u64::from(other)))),
         })
     }
 }
@@ -825,7 +792,7 @@ pub struct LuaTable<'a>(HashMap::<LuaValue<'a>, LuaValue<'a>>);
 
 impl<'a> Hash for LuaTable<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for entry in self.0.iter() {
+        for entry in &self.0 {
             entry.hash(state);
         }
     }
@@ -840,10 +807,9 @@ impl<'p> Parse<'p> for LuaTable<'p> {
             let lua_type: u32 = parser.parse()?;
             if lua_type == 0 {
                 return Ok(LuaTable(entries))
-            } else {
-                parser.i = i;
-                entries.insert(parser.parse()?, parser.parse()?);
             }
+            parser.i = i;
+                entries.insert(parser.parse()?, parser.parse()?);
         }
     }
 }
@@ -926,7 +892,8 @@ mod convert_nalgebra {
 
     use super::*;
     impl Transform {
-        pub fn into_nalegbra_pair(&self) -> (Point3<f32>, UnitQuaternion<f32>) {
+        #[must_use]
+        pub fn as_nalegbra_pair(&self) -> (Point3<f32>, UnitQuaternion<f32>) {
             (
                 Point3::from_slice(&self.pos),
                 UnitQuaternion::from_quaternion(Quaternion::from_parts(self.rot[3], Point3::from_slice(&self.rot[0..3]).coords))
@@ -1031,6 +998,7 @@ pub struct Shape<'a> {
 }
 
 impl<'a> Shape<'a> {
+    #[must_use]
     pub fn iter_voxels(&'a self) -> VoxelIter<'a> {
         self.voxels.iter()
     }
@@ -1073,7 +1041,7 @@ where I: PrimInt + std::ops::AddAssign {
     fn next(&mut self) -> Option<Self::Item> {
         if self.done { return None }
         let to_return = Some(self.current);
-        for &dim_i in self.order.iter() {
+        for &dim_i in &self.order {
             self.current[dim_i] += I::one();
             if self.current[dim_i] >= self.size[dim_i] {
                 self.current[dim_i] = I::zero();
@@ -1095,15 +1063,17 @@ where I: PrimInt {
 }
 
 impl<'a> Voxels<'a> {
+    #[must_use]
     pub fn iter(&'a self) -> VoxelIter<'a> {
         VoxelIter::new(self)
     }
 }
 
-pub struct VoxelIter<'a>(Filter<Zip<BoxIter<i32>, FlatMap<ArrayChunks<'a, u8, 2>, Take<Copied<Repeat<&'a u8>>>, fn(&'a [u8; 2]) -> Take<Copied<Repeat<&u8>>>>>, fn(&([i32; 3], u8)) -> bool>);
+#[allow(clippy::type_complexity)]
+pub struct VoxelIter<'a>(Filter<Zip<BoxIter<i32>, FlatMap<Copied<ArrayChunks<'a, u8, 2>>, Take<Repeat<u8>>, fn([u8; 2]) -> Take<Repeat<u8>>>>, fn(&([i32; 3], u8)) -> bool>);
 
-fn flat_map_voxel_data_chunk([n_times, palette_index]: &[u8; 2]) -> Take<Copied<Repeat<&u8>>> {
-    iter::repeat(palette_index).copied().take(*n_times as usize + 1)
+fn flat_map_voxel_data_chunk([n_times, palette_index]: [u8; 2]) -> Take<Repeat<u8>> {
+    iter::repeat(palette_index).take(n_times as usize + 1)
 }
 
 impl<'a> VoxelIter<'a> {
@@ -1111,12 +1081,14 @@ impl<'a> VoxelIter<'a> {
         Self::new_from_parts(&voxel_data.size, voxel_data.palette_index_runs.as_ref())
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     fn new_from_parts(size: &'a [u32; 3], compressed_palette_indices: &'a [u8]) -> Self {
         VoxelIter(
-            BoxIter::new(size.map(|dim| dim as i32).clone(), [0, 1, 2])
+            BoxIter::new(size.map(|dim| dim as i32), [0, 1, 2])
             .zip(
                 compressed_palette_indices.array_chunks::<2>()
-                .flat_map(flat_map_voxel_data_chunk as fn(&[u8; 2]) -> std::iter::Take<Copied<std::iter::Repeat<&u8>>>)
+                .copied()
+                .flat_map(flat_map_voxel_data_chunk as fn([u8; 2]) -> Take<Repeat<u8>>)
             )
             .filter(|(_, palette_index)| *palette_index != 0)
         )

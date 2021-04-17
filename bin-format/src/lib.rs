@@ -41,7 +41,9 @@ pub fn parse_uncompressed(bytes: &[u8]) -> Result<Scene<'_>, ParseError<'_>> {
     Ok(Scene::parse(&mut Parser::new(bytes))?)
 }
 
-pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwningHandle<Vec<u8>, Box<Scene<'static>>>, Box<dyn std::error::Error>> {
+pub type OwnedScene = OwningHandle<Vec<u8>, Box<Scene<'static>>>;
+
+pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwnedScene, Box<dyn std::error::Error>> {
     let uncompressed = read_to_uncompressed(path)?;
     OwningHandle::try_new(uncompressed, |uncompressed_ref| {
         // Safety: I have no idea.
@@ -64,7 +66,7 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Err
             for element in end_path {
                 print!(".{}", element);
             }
-            println!("");
+            println!();
             Err(err).unwrap()
         }
     };

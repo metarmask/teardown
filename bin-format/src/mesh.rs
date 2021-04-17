@@ -7,6 +7,7 @@ use building_blocks::{
 use crate::{Palette, PaletteIndex, format::Shape};
 
 impl<'a> Shape<'a> {
+    #[must_use]
     pub fn to_mesh(&self, palettes: &[Palette]) -> (Array3<PaletteIndex>, GreedyQuadsBuffer) {
         let size: [i32; 3] = self.voxels.size.map(|dim| dim.try_into().expect("shape size too large"));
         let extent = padded_greedy_quads_chunk_extent(&ExtentN {
@@ -14,10 +15,9 @@ impl<'a> Shape<'a> {
             shape: PointN(size)
         });
         let mut array = Array3::fill(extent, PaletteIndex(0, false));
-        let is_glass = if let Some(palette) = palettes.get(self.palette as usize) {
-            palette.materials.iter().map(|material| material.rgba.0[3] < 1.0).collect::<Vec<_>>().try_into().unwrap()
-        } else {
-            [false; 256]
+        let is_glass = match palettes.get(self.palette as usize) {
+            Some(palette) => palette.materials.iter().map(|material| material.rgba.0[3] < 1.0).collect::<Vec<_>>().try_into().unwrap(),
+            None => [false; 256],
         };
         for (coord, palette_index) in self.iter_voxels() {
             *array.get_mut(PointN(coord)) = PaletteIndex(palette_index, is_glass[palette_index as usize]);

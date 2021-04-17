@@ -38,16 +38,17 @@ struct BlenderMeshSpec {
 impl Default for BlenderMeshSpec {
     fn default() -> Self {
         Self {
-            verts: Default::default(),
-            edges: Default::default(),
             polygon_loop_total: 4,
-            polygon_vert_indices: Default::default(),
-            polygon_material_index: Default::default()
+            verts: Vec::new(),
+            edges: None,
+            polygon_vert_indices: Vec::new(),
+            polygon_material_index: None
         }
     }
 }
 
 impl BlenderMeshSpec {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn apply_to_mesh(self, mesh: &PyAny, py: Python) -> PyResult<()> {
         let py_verts = mesh.getattr("vertices")?;
         let py_loops = mesh.getattr("loops")?;
@@ -100,16 +101,25 @@ pub fn compute_hash_n<H: Hash>(to_hash: &H) -> u64 {
     hasher.finish()
 }
 
-impl<'a> ImportContext<'a> {
-    fn get_entity_name(&self, entity: &Entity) -> String {
-        let mut s = String::new();
-        if entity.desc != "" {
-            s += &(entity.desc.to_owned() + " ");
-        }
-        s += &format!("{} {:?}", entity.handle, EntityKindVariants::from(&entity.kind));
-        s
+fn get_entity_name(entity: &Entity) -> String {
+    let mut s = String::new();
+    if !entity.desc.is_empty() {
+        s += &(entity.desc.to_owned() + " ");
     }
+    s += &format!("{} {:?}", entity.handle, EntityKindVariants::from(&entity.kind));
+    s
+}
 
+fn set_transform(obj: &PyAny, transform: Option<&Transform>) -> PyResult<()> {
+    if let Some(Transform { pos, rot: [x, y, z, w] }) = transform {
+        obj.setattr("location", (pos[0], pos[1], pos[2]))?;
+        obj.setattr("rotation_mode", "QUATERNION")?;
+        obj.setattr("rotation_quaternion", (*w, *x, *y, *z))?;
+    }
+    Ok(())
+}
+
+impl<'a> ImportContext<'a> {
     fn create_mesh_for_shape(shape: &Shape, palettes: &[Palette]) -> BlenderMeshSpec {
         let (mut palette_indices, quads) = shape.to_mesh(palettes);
         let mut vert_position_indices: BTreeMap<[i32; 3], i32> = BTreeMap::new();
@@ -134,7 +144,7 @@ impl<'a> ImportContext<'a> {
                     * n_sign == 1
                     {[2, 3, 1, 0] } else { [0, 1, 3, 2] }.iter().map(|rel_i| corner_indices[*rel_i])
                 );
-                polygon_material_index.push(palette_indices.get_mut(quad.minimum).0 as i16);
+                polygon_material_index.push(i16::from(palette_indices.get_mut(quad.minimum).0));
             }
         }
         let verts: Vec<f32> = {
@@ -142,7 +152,7 @@ impl<'a> ImportContext<'a> {
             map_as_vec.sort_unstable_by_key(|(_, index)| *index);
             let mut verts = Vec::new();
             for (pos, _) in map_as_vec {
-                for dim in pos.iter() {
+                for dim in &pos {
                     verts.push((*dim) as f32 * 0.1);
                 }
             }
@@ -151,22 +161,13 @@ impl<'a> ImportContext<'a> {
         BlenderMeshSpec { verts, edges: None, polygon_loop_total: 4, polygon_vert_indices, polygon_material_index: Some(polygon_material_index) }
     }
 
-    fn set_transform(&self, obj: &'a PyAny, transform: Option<&Transform>) -> PyResult<()> {
-        if let Some(Transform { pos, rot: [x, y, z, w] }) = transform {
-            obj.setattr("location", (pos[0], pos[1], pos[2]))?;
-            obj.setattr("rotation_mode", "QUATERNION")?;
-            obj.setattr("rotation_quaternion", (*w, *x, *y, *z))?;
-        }
-        Ok(())
-    }
-
     fn create_object(&mut self, entity: &Entity, collection: &'a PyAny, parsed: &Scene, meshes: &mut HashMap<u32, BlenderMeshSpec>) -> PyResult<&PyAny> {
         self.entity_progress.inc(1);
         let mut obj: Option<&PyAny> = None;
         let mut obj_data: Option<&PyAny> = None;
         match &entity.kind {
             EntityKind::Light(Light { kind, cone_angle, cone_penumbra, rgba, size, .. }) => {
-                let name = format!("{} {:?}", self.get_entity_name(entity), kind);
+                let name = format!("{} {:?}", get_entity_name(entity), kind);
                 let light;
                 match kind {
                     LightKind::Area => { light = self.new_light.call1((name, "AREA",))?; }
@@ -185,8 +186,8 @@ impl<'a> ImportContext<'a> {
                 obj_data = Some(light);
             }
             EntityKind::Shape(shape) => {
-                let blender_mesh = self.new_mesh.call1((format!("{} mesh", self.get_entity_name(entity)),))?;
-                let mesh_obj = self.new_object.call1((self.get_entity_name(entity), blender_mesh))?;
+                let blender_mesh = self.new_mesh.call1((format!("{} mesh", get_entity_name(entity)),))?;
+                let mesh_obj = self.new_object.call1((get_entity_name(entity), blender_mesh))?;
                 if shape.voxels.size.iter().any(|&dim| dim == 0) {
                     println!("Weird thing: {:?}", entity);
                 }
@@ -229,18 +230,19 @@ impl<'a> ImportContext<'a> {
             _ => {}
         }
         let obj = if let Some(obj) = obj { obj } else {
-            self.new_object.call1((self.get_entity_name(entity), obj_data))?
+            self.new_object.call1((get_entity_name(entity), obj_data))?
         };
-        self.set_transform(obj, entity.kind.transform())?;
+        set_transform(obj, entity.kind.transform())?;
         collection.getattr("objects")?.getattr("link")?.call1((obj,))?;
-        for child in entity.children.iter() {
+        for child in &entity.children {
             let child_obj = self.create_object(child, collection, parsed, meshes)?;
             child_obj.setattr("parent", obj)?;
         }
         Ok(obj)
     }
 
-    fn create_palette(&mut self, palette_i: usize, palette: &Palette) -> PyResult<()> {
+    #[allow(clippy::cast_possible_truncation)]
+    fn create_palette(&mut self, palette_i: usize, palette: &Palette) {
         let mut index_map: HashMap<u8, &'a PyAny> = HashMap::new();
         for (material_i, material) in palette.materials.iter().enumerate() {
             if let MaterialKind::None = material.kind { continue }
@@ -250,7 +252,6 @@ impl<'a> ImportContext<'a> {
             }
         }
         self.palette_materials.insert(palette_i as u32, index_map);
-        Ok(())
     }
 
     fn import(&mut self, path: &str) -> PyResult<Py<PyAny>> {
@@ -258,7 +259,7 @@ impl<'a> ImportContext<'a> {
         let parsed = teardown_bin_format::parse_uncompressed(&uncompressed).map_err(|err| {
             PyErr::new::<exceptions::PyException, _>(format!("{:?}", err))
         })?;
-        let mut n_all_entities = 0;
+        let mut n_all_entities = 0_usize;
         let shapes: Vec<(&Entity, &Shape)> = parsed.iter_entities().filter_map(|entity| {
             n_all_entities += 1;
             match &entity.kind { EntityKind::Shape(shape) => Some((entity, shape)), _ => None } } ).collect();
@@ -277,13 +278,14 @@ impl<'a> ImportContext<'a> {
             for (material_i, material) in palette.materials.iter().enumerate() {
                 if matches!(material.kind, MaterialKind::None) { continue }
                 let hash = compute_hash_n(material);
+                #[allow(clippy::cast_possible_truncation)]
                 pal_i_map.insert((palette_i, material_i as u8), hash);
                 hash_to_palette.entry(hash).or_insert(material);
             }
 
         }
         for (entity, shape) in &shapes {
-            if let Some(_) = parsed.palettes.get(shape.palette as usize) {
+            if parsed.palettes.get(shape.palette as usize).is_some() {
                 for (_, mat_i) in shape.iter_voxels() {
                     material_set_indices.insert((shape.palette as usize, mat_i));
                 }
@@ -311,7 +313,7 @@ impl<'a> ImportContext<'a> {
             self.hash_material_map.insert(hash, blender_mat);
         }
         for (i, palette) in parsed.palettes.iter().enumerate().progress_with(palette_progress) {
-            self.create_palette(i, palette)?;
+            self.create_palette(i, palette);
         }
         let new_collection = self.new_collection.call1((format!("{} (Teardown level)", parsed.level),))?;
 
@@ -326,7 +328,7 @@ impl<'a> ImportContext<'a> {
         }).collect::<HashMap<_, _>>();
 
         // Just the scene children
-        for entity in parsed.entities.iter() {
+        for entity in &parsed.entities {
             self.create_object(entity, new_collection, &parsed, &mut shape_meshes)?;
         }
         let player_camera = self.new_camera.call1(("Player camera camera",))?;

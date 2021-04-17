@@ -77,8 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Example: lee
                     let level_name = level_path.file_name().unwrap();
                     // Example: lee_tower
-                    let level_id = registry.get("game.levelid").expect("levels should have game.levelid registry entry");
-                    if *level_id == "" { continue; }
+                    let &level_id = registry.get("game.levelid").expect("levels should have game.levelid registry entry");
+                    if level_id.is_empty() { continue; }
                     let mod_dir = mods_folder.join(level_name);
                     if !created_mods.insert(level_name.to_owned()) {
                         continue
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     
                 }
                 // println!("{:?}", sound_files);
-                for mod_ in created_mods.iter() {
+                for mod_ in &created_mods {
                     fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
                     fs::write(mods_folder.join(mod_).join("info.txt"), format!(
 "name = {}
@@ -168,7 +168,7 @@ fn get_extra_library_dirs(main_dir: &Path) -> Result<Vec<PathBuf>> {
         .as_table().context(VDFErr)?;
     let mut libraries = Vec::new();
     for (key, value) in entries.iter() {
-        if let Ok(_) = key.parse::<i32>() { libraries.push(value.as_str().context(VDFErr)?.into()) }
+        if key.parse::<i32>().is_ok() { libraries.push(value.as_str().context(VDFErr)?.into()) }
     }
     Ok(libraries)
 }
@@ -206,11 +206,9 @@ impl SteamApp {
     }
 
     fn user_dir(&self) -> PathBuf {
-        if let Some(compat_drive) = self.compat_drive() {
+        self.compat_drive().map_or_else(|| dirs::home_dir().expect("dirs::home_dir"), |compat_drive| {
             compat_drive.join("users").join("steamuser")
-        } else {
-            dirs::home_dir().expect("dirs::home_dir")
-        }
+        })
     }
 }
 

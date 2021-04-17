@@ -1,0 +1,12 @@
+{
+    "rust-analyzer.checkOnSave.extraArgs": [
+        "--",
+        "-W", "clippy::all",
+        "-W", "clippy::pedantic",
+        "-A", "clippy::wildcard-imports",
+        "-A", "clippy::missing_errors_doc",
+        "-A", "clippy::cast-precision-loss",
+        "-A", "clippy::non_ascii_literal",
+        "-A", "clippy::implicit-hasher"
+    ]
+}

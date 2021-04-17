@@ -16,7 +16,7 @@ impl button::StyleSheet for LevelButton {
             }
             Self { selected: true, loaded: false } => {
                 button::Style {
-                    background: Some(Background::Color(Color::from_rgb(1., 1., 0.).into())),
+                    background: Some(Background::Color(Color::from_rgb(1., 1., 0.))),
                     text_color: Color::from_rgb(0., 0., 0.),
                     border_color: Color::from_rgb(0., 0., 0.),
                     .. Default::default()
@@ -25,7 +25,7 @@ impl button::StyleSheet for LevelButton {
             }
             Self { selected: true, loaded: true } => {
                 button::Style {
-                    background: Some(Background::Color(Color::from_rgb(0.2, 0.2, 0.).into())),
+                    background: Some(Background::Color(Color::from_rgb(0.2, 0.2, 0.))),
                     text_color: Color::from_rgb(1., 1., 1.),
                     border_width: 2.,
                     border_color: Color::from_rgb(1., 1., 0.),

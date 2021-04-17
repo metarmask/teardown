@@ -1,9 +1,10 @@
+#![allow(clippy::default_trait_access)] // Default UI state is irrelevant
 mod style;
 mod alphanum_ord;
 
 use std::{fmt::{self, Formatter, Debug}, fs, mem, path::PathBuf, sync::{Arc, Mutex}};
 use iced::{Align, Application, Button, Column, Command, Element, Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment, button, executor, scrollable};
-use teardown_bin_format::{Scene, parse_file};
+use teardown_bin_format::{OwnedScene, Scene, parse_file};
 use owning_ref::OwningHandle;
 use teardown_editor_format::{SceneWriterBuilder, VoxStore};
 use crate::{Directories, find_teardown_dirs};
@@ -71,7 +72,7 @@ impl Level {
                         ]).padding(5).into(),
                         Space::with_height(Length::Fill).into(),
                         Row::with_children(vec![
-                            Text::new(format!("Convert to ..."))
+                            Text::new("Convert to ...".to_string())
                                 .vertical_alignment(VerticalAlignment::Center).into(),
                             Space::with_width(10.into()).into(),
                             Button::new(&mut self.button_to_xml, Text::new("Editor"))
@@ -88,7 +89,9 @@ impl Level {
         let button = {
             let text = Text::new(name);
             let mut button = Button::new(&mut self.button_select, Row::with_children(vec![text.into(), Space::with_width(Length::Fill).into()]));
-            button = button.style(style::LevelButton { selected: selected || if let Load::Loading = self.scene { true } else { false }, loaded: if let Load::Loaded(_) = self.scene { true } else { false } });
+            button = button.style(style::LevelButton {
+                selected: selected || matches!(self.scene, Load::Loading),
+                loaded: matches!(self.scene, Load::Loaded(_)) });
             button
         };
         LevelViews { button, side }
@@ -127,7 +130,7 @@ impl Level {
     }
 
     fn load_scene(&mut self, force: bool) -> Command<LevelMessage> {
-        let no_scene = if let Load::None = self.scene { true } else { false };
+        let no_scene = matches!(self.scene, Load::None);
         
         if no_scene || force {
             let path = self.path.to_owned();
@@ -144,8 +147,8 @@ impl Level {
 #[derive(Clone)]
 pub enum LevelMessage {
     ConvertXML,
-    SceneLoaded(Arc<Result<OwningHandle<Vec<u8>, Box<Scene<'static>>>, String>>),
-    XMLConverted(Arc<OwningHandle<Vec<u8>, Box<Scene<'static>>>>),
+    SceneLoaded(Arc<Result<OwnedScene, String>>),
+    XMLConverted(Arc<OwnedScene>),
 }
 
 #[derive(Clone)]
@@ -190,7 +193,7 @@ impl Application for App {
     }
 
     fn title(&self) -> String {
-        format!("Parse and convert the binary format for Teardown")
+        "Parse and convert the binary format for Teardown".to_string()
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
