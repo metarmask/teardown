@@ -420,16 +420,16 @@ fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
     }
 }
 
-pub enum MaterialsMapping<'a> {
+pub enum PaletteMapping<'a> {
     Original(&'a [Material; 256]),
     Remapped(Box<([Material; 256], [u8; 256])>),
 }
 
-impl MaterialsMapping<'_> {
+impl PaletteMapping<'_> {
     fn materials_as_ref(&self) -> &[Material; 256] {
         match self {
-            MaterialsMapping::Original(materials) => materials,
-            MaterialsMapping::Remapped(remapped) => &remapped.0,
+            PaletteMapping::Original(original) => original,
+            PaletteMapping::Remapped(remapped) => &remapped.0,
         }
     }
 }
@@ -437,79 +437,83 @@ impl MaterialsMapping<'_> {
 /// Rearrange materials of a palette so that the materials are at the correct
 /// indices
 #[allow(clippy::cast_possible_truncation)] // Never
-fn remap_materials(materials: &[Material; 256]) -> MaterialsMapping {
-    for (i, material) in materials.iter().enumerate() {
-        if material.kind != MaterialKind::None && material_kind_for_index(i as u8) != material.kind
+fn remap_materials(orig_palette: &[Material; 256]) -> PaletteMapping {
+    for (i, orig_material) in orig_palette.iter().enumerate() {
+        if orig_material.kind != MaterialKind::None
+            && material_kind_for_index(i as u8) != orig_material.kind
         {
-            let mut material_kind_materials: HashMap<MaterialKind, Vec<(usize, Material)>> =
-                HashMap::new();
-            let mut mapping: [u8; 256] = (0..=255_u8).collect::<Vec<_>>().try_into().unwrap();
-            for (i, material) in materials.iter().enumerate() {
-                material_kind_materials
-                    .entry(material.kind)
+            let mut kind_to_orig: HashMap<MaterialKind, Vec<(usize, Material)>> = HashMap::new();
+            let mut indices_orig_to_new: [u8; 256] =
+                (0..=255_u8).collect::<Vec<_>>().try_into().unwrap();
+            for (i, orig_material) in orig_palette.iter().enumerate() {
+                kind_to_orig
+                    .entry(orig_material.kind)
                     .or_default()
-                    .push((i, material.to_owned()));
+                    .push((i, orig_material.to_owned()));
             }
-            let mut none_materials = material_kind_materials
-                .remove(&MaterialKind::None)
-                .unwrap_or_default();
-            let mut materials_ordered: [Option<Material>; 256] =
+            let mut filler_originals = kind_to_orig.remove(&MaterialKind::None).unwrap_or_default();
+            let mut new_palette_interm: [Option<Material>; 256] =
                 vec![None; 256].try_into().unwrap();
-            let mut failed_orig_indices = Vec::new();
-            for (kind, mut materials) in material_kind_materials {
-                materials.sort_by_key(|(_, material)| material.replacable);
+            let mut forced_filler_orig_indices = Vec::new();
+            for (kind, mut kind_originals) in kind_to_orig {
+                kind_originals.sort_by_key(|(_, m)| m.replacable);
                 let range = range_for_material_kind(kind);
-                let mut materials_iter = materials.into_iter();
+                let mut kind_originals_iter = kind_originals.into_iter();
                 for (new_i, (orig_i, material)) in
-                    (range[0]..=range[1]).zip(materials_iter.by_ref())
+                    (range[0]..=range[1]).zip(kind_originals_iter.by_ref())
                 {
-                    mapping[orig_i] = new_i;
-                    materials_ordered[new_i as usize] = Some(material);
+                    indices_orig_to_new[orig_i] = new_i;
+                    new_palette_interm[new_i as usize] = Some(material);
                 }
-                none_materials.extend(materials_iter.inspect(|(orig_i, material)| {
+                filler_originals.extend(kind_originals_iter.inspect(|(orig_i, material)| {
                     if material.replacable == 0 {
-                        failed_orig_indices.push(*orig_i);
+                        forced_filler_orig_indices.push(*orig_i);
                     }
                 }));
             }
-            for (new_i, ok) in materials_ordered.iter_mut().enumerate() {
+            for (new_i, ok) in new_palette_interm.iter_mut().enumerate() {
                 if ok.is_none() {
                     let (orig_i, none_material) = if matches!(new_i, 0 | 255) {
-                        none_materials.remove(0)
+                        filler_originals.remove(0)
                     } else {
-                        none_materials.pop().unwrap()
+                        filler_originals.pop().unwrap()
                     };
-                    mapping[orig_i] = new_i as u8;
+                    indices_orig_to_new[orig_i] = new_i as u8;
                     *ok = Some(none_material);
                 }
             }
-            let materials_ordered = materials_ordered.map(Option::unwrap);
-            if !failed_orig_indices.is_empty() {
-                warn_failed_remap(failed_orig_indices, materials, &materials_ordered, &mapping)
+            let new_palette = new_palette_interm.map(Option::unwrap);
+            if !forced_filler_orig_indices.is_empty() {
+                warn_wrong_indices(
+                    forced_filler_orig_indices,
+                    orig_palette,
+                    &new_palette,
+                    &indices_orig_to_new,
+                )
             }
-            return MaterialsMapping::Remapped(Box::new((materials_ordered, mapping)));
+            return PaletteMapping::Remapped(Box::new((new_palette, indices_orig_to_new)));
         }
     }
-    MaterialsMapping::Original(materials)
+    PaletteMapping::Original(orig_palette)
 }
 
 #[cold]
-fn warn_failed_remap(
-    failed_indices: Vec<usize>,
-    orig_materials: &[Material; 256],
-    materials_ordered: &[Material; 256],
-    mapping: &[u8; 256],
+fn warn_wrong_indices(
+    forced_filler_orig_indices: Vec<usize>,
+    orig_palette: &[Material; 256],
+    new_palette: &[Material; 256],
+    indices_orig_to_new: &[u8; 256],
 ) {
     println!(
         "Failed mappings in palette {}: {}",
-        hash_n_to_str(compute_hash_n(&materials_ordered)),
-        failed_indices
+        hash_n_to_str(compute_hash_n(&new_palette)),
+        forced_filler_orig_indices
             .into_iter()
             .map(|orig_i| format!(
                 "{:?} -> {:?} ({})",
-                orig_materials[orig_i].kind,
-                material_kind_for_index(mapping[orig_i]),
-                mapping[orig_i],
+                orig_palette[orig_i].kind,
+                material_kind_for_index(indices_orig_to_new[orig_i]),
+                indices_orig_to_new[orig_i],
             ))
             .collect::<Vec<_>>()
             .join(", ")
@@ -527,7 +531,7 @@ impl SceneWriter<'_> {
                 return Err(err.into());
             }
         }
-        let palette_remappings = self
+        let palette_mappings = self
             .scene
             .palettes
             .iter()
@@ -536,9 +540,9 @@ impl SceneWriter<'_> {
         let palette_files = {
             let mut vox_store = self.vox_store.lock().unwrap();
             vox_store.load_palettes(
-                palette_remappings
+                palette_mappings
                     .iter()
-                    .map(MaterialsMapping::materials_as_ref)
+                    .map(PaletteMapping::materials_as_ref)
                     .collect::<Vec<_>>()
                     .as_ref(),
             )
@@ -550,14 +554,14 @@ impl SceneWriter<'_> {
         for entity in self.scene.iter_entities() {
             if let EntityKind::Shape(shape) = &entity.kind {
                 let mut voxels: Voxels = shape.voxels.to_owned();
-                if let Some(MaterialsMapping::Remapped(remapped)) =
-                    palette_remappings.get(shape.palette as usize)
+                if let Some(PaletteMapping::Remapped(remapped)) =
+                    palette_mappings.get(shape.palette as usize)
                 {
-                    let remap_array = remapped.1;
+                    let indices_orig_to_new = remapped.1;
                     let mut palette_index_runs = voxels.palette_index_runs.clone().into_owned();
                     for [_n_times, palette_index] in palette_index_runs.array_chunks_mut() {
                         if *palette_index != 0 {
-                            *palette_index = remap_array[*palette_index as usize];
+                            *palette_index = indices_orig_to_new[*palette_index as usize];
                         }
                     }
                     voxels.palette_index_runs = Cow::Owned(palette_index_runs);
@@ -608,7 +612,7 @@ impl SceneWriter<'_> {
                 None,
                 false,
                 &entity_voxels,
-                &palette_remappings,
+                &palette_mappings,
             )?;
         }
         xml_writer.write_event(Event::End(end))?;
@@ -777,7 +781,7 @@ pub fn write_entity_xml<W: Write>(
     parent: Option<&Entity>,
     mut dynamic: bool,
     entity_voxels: &HashMap<u32, Voxels>,
-    palette_remappings: &[MaterialsMapping],
+    palette_remappings: &[PaletteMapping],
 ) -> XMLResult<()> {
     // debug_write_entity_positions(entity, parent);
     let (name, mut kind_attrs) = match &entity.kind {
