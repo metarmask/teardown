@@ -421,14 +421,14 @@ fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
 }
 
 pub enum MaterialsMapping<'a> {
-    Same(&'a [Material; 256]),
+    Original(&'a [Material; 256]),
     Remapped(Box<([Material; 256], [u8; 256])>),
 }
 
 impl MaterialsMapping<'_> {
     fn materials_as_ref(&self) -> &[Material; 256] {
         match self {
-            MaterialsMapping::Same(materials) => materials,
+            MaterialsMapping::Original(materials) => materials,
             MaterialsMapping::Remapped(remapped) => &remapped.0,
         }
     }
@@ -455,30 +455,65 @@ fn remap_materials(materials: &[Material; 256]) -> MaterialsMapping {
                 .unwrap_or_default();
             let mut materials_ordered: [Option<Material>; 256] =
                 vec![None; 256].try_into().unwrap();
-            for (kind, materials) in material_kind_materials {
+            let mut failed_orig_indices = Vec::new();
+            for (kind, mut materials) in material_kind_materials {
+                materials.sort_by_key(|(_, material)| material.replacable);
                 let range = range_for_material_kind(kind);
-                let mut what = materials.into_iter();
-                for (new_i, (orig_i, material)) in (range[0]..=range[1]).zip(what.by_ref()) {
+                let mut materials_iter = materials.into_iter();
+                for (new_i, (orig_i, material)) in
+                    (range[0]..=range[1]).zip(materials_iter.by_ref())
+                {
                     mapping[orig_i] = new_i;
                     materials_ordered[new_i as usize] = Some(material);
                 }
-                none_materials.extend(what);
+                none_materials.extend(materials_iter.inspect(|(orig_i, material)| {
+                    if material.replacable == 0 {
+                        failed_orig_indices.push(*orig_i);
+                    }
+                }));
             }
             for (new_i, ok) in materials_ordered.iter_mut().enumerate() {
                 if ok.is_none() {
-                    if let Some((orig_i, none_material)) = none_materials.pop() {
-                        mapping[orig_i] = new_i as u8;
-                        *ok = Some(none_material);
-                    }
+                    let (orig_i, none_material) = if matches!(new_i, 0 | 255) {
+                        none_materials.remove(0)
+                    } else {
+                        none_materials.pop().unwrap()
+                    };
+                    mapping[orig_i] = new_i as u8;
+                    *ok = Some(none_material);
                 }
             }
-            return MaterialsMapping::Remapped(Box::new((
-                materials_ordered.map(Option::unwrap),
-                mapping,
-            )));
+            let materials_ordered = materials_ordered.map(Option::unwrap);
+            if !failed_orig_indices.is_empty() {
+                warn_failed_remap(failed_orig_indices, materials, &materials_ordered, &mapping)
+            }
+            return MaterialsMapping::Remapped(Box::new((materials_ordered, mapping)));
         }
     }
-    MaterialsMapping::Same(materials)
+    MaterialsMapping::Original(materials)
+}
+
+#[cold]
+fn warn_failed_remap(
+    failed_indices: Vec<usize>,
+    orig_materials: &[Material; 256],
+    materials_ordered: &[Material; 256],
+    mapping: &[u8; 256],
+) {
+    println!(
+        "Failed mappings in palette {}: {}",
+        hash_n_to_str(compute_hash_n(&materials_ordered)),
+        failed_indices
+            .into_iter()
+            .map(|orig_i| format!(
+                "{:?} -> {:?} ({})",
+                orig_materials[orig_i].kind,
+                material_kind_for_index(mapping[orig_i]),
+                mapping[orig_i],
+            ))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 impl SceneWriter<'_> {
