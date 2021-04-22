@@ -12,7 +12,6 @@
 2. Run it.
 3. Click one of the levels on the left.
 4. Beside the text "Convert to..." at the bottom, click the "Editor" button.
-5. (Optional) Remove "not-" prefixes from the main.xml file using Find and replace.
 6. Open the mod "converted" which should have appeared in Teardown.
 
 Converting levels will reuse the same Vox files in order to save storage and time. The Vox files are stored in "Teardown/data/vox/hash".
@@ -26,12 +25,11 @@ Use Rust Nightly. To run the graphical interface, use:
 
 ## Known issues
 * Rotation fails for shapes which are rotated on three axes.
-* The relative position of vehicles do not work properly.
-* The attributes of the following entity kinds are not added to the editor XML:
+* Wheels are placed at the centers of vehicle bodies.
+* Specific attributes of the following entities are not added to the editor XML:
   * Wheel
   * Joint (not rope joints, though)
-  * Location
   * Screen
   * Trigger
-* Wheels are added with a "not-" prefix in the XML, removing them from the editor. This is done to prevent crashes.
 * Shapes which cannot fit in a MagicaVoxel object are truncated.
+* Shapes with more of a certain material kind than can fit in its designated area of the MagicaVoxel palette will have some incorrect materials.
