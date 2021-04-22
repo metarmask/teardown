@@ -742,20 +742,16 @@ impl ToXMLAttributes for Water {
 impl ToXMLAttributes for Script<'_> {
     #[rustfmt::skip]
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
-        let mut param_iter = self.params.0.iter().map(|(key, value)| format!("{}={}", key, value));
-        let mut attrs = Vec::new();
-        attrs.push((
-            "file",
+        iter::once(("file",
             match Path::new(self.path).strip_prefix("data/script/") {
                 Ok(ok) => ok.display().to_string(),
                 Err(_) => self.path.to_string(),
-            },
-        ));
-        if let Some(param) = param_iter.next() { attrs.push(("param0", param)) }
-        if let Some(param) = param_iter.next() { attrs.push(("param1", param)) }
-        if let Some(param) = param_iter.next() { attrs.push(("param2", param)) }
-        if let Some(param) = param_iter.next() { attrs.push(("param3", param)) }
-        attrs
+            }))
+        .chain(
+            ["param0", "param1", "param2", "param3"].iter().copied()
+            .zip(
+            self.params.0.iter().map(|(key, value)| format!("{}={}", key, value))))
+        .collect()
     }
 }
 
