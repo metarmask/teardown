@@ -220,6 +220,18 @@ impl ToXMLAttributes for Light<'_> {
     }
 }
 
+impl WriteXML for &[BoundaryVertex] {
+    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> XMLResult<()> {
+        for BoundaryVertex { x, z } in *self {
+            writer.write_event(Event::Empty(
+                BytesStart::owned_name("vertex")
+                    .with_attributes(vec![("pos", join_as_strings([x, z].iter()).as_ref())]),
+            ))?;
+        }
+        Ok(())
+    }
+}
+
 pub struct VoxStore {
     pub hash_vox_dir: PathBuf,
     pub palette_files: HashMap<u64, Arc<Mutex<VoxStoreFile>>>,
@@ -603,6 +615,7 @@ impl SceneWriter<'_> {
         let end = start.to_end();
         xml_writer.write_event(Event::Start(start.clone()))?;
         self.scene.environment.write_xml(&mut xml_writer)?;
+        Self::write_boundary(&self.scene.boundary_vertices, &mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         for entity in entities {
             write_entity_xml(
@@ -616,6 +629,18 @@ impl SceneWriter<'_> {
             )?;
         }
         xml_writer.write_event(Event::End(end))?;
+        Ok(())
+    }
+
+    fn write_boundary(
+        boundary: &[BoundaryVertex],
+        writer: &mut Writer<&mut File>,
+    ) -> XMLResult<()> {
+        let start = BytesStart::owned_name("boundary");
+        let start_for_end = start.to_owned();
+        writer.write_event(Event::Start(start))?;
+        boundary.write_xml(writer)?;
+        writer.write_event(Event::End(start_for_end.to_end()))?;
         Ok(())
     }
 }
@@ -863,12 +888,7 @@ pub fn write_entity_xml<W: Write>(
     }
     match &entity.kind {
         EntityKind::Water(water) => {
-            for BoundaryVertex { x, z } in &water.boundary_vertices {
-                writer.write_event(Event::Empty(
-                    BytesStart::owned_name("vertex")
-                        .with_attributes(vec![("pos", join_as_strings([x, z].iter()).as_ref())]),
-                ))?;
-            }
+            water.boundary_vertices.as_slice().write_xml(writer)?;
         }
         #[rustfmt::skip]
         EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
