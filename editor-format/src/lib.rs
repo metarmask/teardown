@@ -811,6 +811,12 @@ pub fn write_entity_xml<W: Write>(
     // debug_write_entity_positions(entity, parent);
     let (name, mut kind_attrs) = match &entity.kind {
         EntityKind::Body(body) => {
+            #[rustfmt::skip]
+            // Skip the body in wheels, and write the shape inside directly
+            if matches!(parent, Some(Entity { kind: EntityKind::Wheel(_), .. })) {
+                assert_eq!(entity.children.len(), 1);
+                return write_entity_xml(&entity.children[0], writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)
+            }
             dynamic = body.dynamic == 1;
             ("body", body.to_xml_attrs())
         }
@@ -837,7 +843,7 @@ pub fn write_entity_xml<W: Write>(
         ]),
         EntityKind::Script(script) => ("script", script.to_xml_attrs()),
         EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
-        EntityKind::Wheel(_) => ("not-wheel", vec![]),
+        EntityKind::Wheel(_) => ("wheel", vec![]),
         EntityKind::Joint(joint) => joint_xml(joint),
         EntityKind::Light(light) => ("light", light.to_xml_attrs()),
         EntityKind::Location(_) => ("location", vec![]),
