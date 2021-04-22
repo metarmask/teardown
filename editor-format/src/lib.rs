@@ -605,6 +605,20 @@ impl SceneWriter<'_> {
             ].into_iter());
         let end = start.to_end();
         xml_writer.write_event(Event::Start(start.clone()))?;
+        #[rustfmt::skip]
+        xml_writer.write_event(Event::Empty(
+            BytesStart::owned_name("spawnpoint").with_attributes(
+                flatten_attrs(vec![
+                    self.scene.spawnpoint.to_xml_attrs(),
+                    vec![("name", "spawnpoint".to_string())]
+                ]).iter().map(|(k, v)| (*k, v.as_ref())),),))?;
+        #[rustfmt::skip]
+        xml_writer.write_event(Event::Empty(
+            BytesStart::owned_name("spawnpoint").with_attributes(
+                flatten_attrs(vec![
+                    self.scene.player.transform.to_xml_attrs(),
+                    vec![("name", "player".to_string())]
+                ]).iter().map(|(k, v)| (*k, v.as_ref())),),))?;
         self.scene.environment.write_xml(&mut xml_writer)?;
         Self::write_boundary(&self.scene.boundary_vertices, &mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
