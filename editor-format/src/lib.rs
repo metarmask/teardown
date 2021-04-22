@@ -851,7 +851,9 @@ pub fn write_entity_xml<W: Write>(
         // If parent body is dynamic, then light is relative to shape in the save
         // representation
         if let Some(parent_transform) = vox_corrected_transform(parent) {
-            world_transform = if dynamic {
+            #[rustfmt::skip]
+            let parent_is_vehicle = matches!(parent, Some(Entity { kind: EntityKind::Vehicle(_), .. }));
+            world_transform = if dynamic && !parent_is_vehicle {
                 world_transform
             } else {
                 let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
@@ -863,16 +865,11 @@ pub fn write_entity_xml<W: Write>(
         attrs.append(&mut world_transform.to_xml_attrs());
     }
     if !entity.tags.0.is_empty() {
-        attrs.push((
-            "tags",
-            join_as_strings(entity.tags.0.iter().map(|(&k, &v)| {
-                if v.is_empty() {
-                    k.to_string()
-                } else {
-                    format!("{}={}", k, v)
-                }
-            })),
-        ));
+        #[rustfmt::skip]
+        attrs.push(("tags",
+            join_as_strings(entity.tags.0.iter()
+                .map(|(&k, &v)| {
+                    if v.is_empty() { k.into() } else { format!("{}={}", k, v) }}))));
     }
     if !entity.desc.is_empty() {
         attrs.push(("desc", entity.desc.to_owned()));
