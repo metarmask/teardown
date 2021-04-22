@@ -1,4 +1,4 @@
-#![feature(array_map, array_chunks)]
+#![feature(array_map, array_chunks, stmt_expr_attributes)]
 use std::{
     borrow::Cow,
     collections::{
@@ -543,21 +543,18 @@ impl SceneWriter<'_> {
                 return Err(err.into());
             }
         }
-        let palette_mappings = self
-            .scene
-            .palettes
-            .iter()
+        #[rustfmt::skip]
+        let palette_mappings = self.scene.palettes.iter()
             .map(|palette| remap_materials(&palette.materials))
             .collect::<Vec<_>>();
+        #[rustfmt::skip]
         let palette_files = {
             let mut vox_store = self.vox_store.lock().unwrap();
             vox_store.load_palettes(
-                palette_mappings
-                    .iter()
+                palette_mappings.iter()
                     .map(PaletteMapping::materials_as_ref)
                     .collect::<Vec<_>>()
-                    .as_ref(),
-            )
+                    .as_ref(),)
         };
         let mut palette_voxel_data: Vec<Vec<Voxels>> = iter::repeat(Vec::new())
             .take(self.scene.palettes.len())
@@ -585,48 +582,37 @@ impl SceneWriter<'_> {
                 entity_voxels.insert(entity.handle, voxels);
             }
         }
-        palette_files
-            .into_iter()
+        #[rustfmt::skip]
+        palette_files.into_iter()
             .zip(palette_voxel_data)
             .par_bridge()
             .for_each(|(palette_file, voxel_data)| {
                 voxel_data.par_iter().for_each_with(
                     palette_file,
                     |palette_file, shape_voxel_data| {
-                        palette_file
-                            .lock()
-                            .unwrap()
+                        palette_file.lock().unwrap()
                             .store_voxel_data(&shape_voxel_data)
                     },
                 )
             });
         let mut xml_file = File::create(mod_dir.join(format!("{}.xml", &self.name)))?;
         let mut xml_writer = Writer::new(&mut xml_file);
+        #[rustfmt::skip]
         let start = BytesStart::owned_name("scene").with_attributes(
             vec![
                 ("version", "0.6.2"),
-                (
-                    "shadowVolume",
-                    &join_as_strings(self.scene.shadow_volume.iter()),
-                ),
-            ]
-            .into_iter(),
-        );
+                ("shadowVolume", &join_as_strings(self.scene.shadow_volume.iter())),
+            ].into_iter());
         let end = start.to_end();
         xml_writer.write_event(Event::Start(start.clone()))?;
         self.scene.environment.write_xml(&mut xml_writer)?;
         Self::write_boundary(&self.scene.boundary_vertices, &mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         for entity in entities {
+            #[rustfmt::skip]
             write_entity_xml(
-                entity,
-                &mut xml_writer,
-                self.scene,
-                None,
-                false,
-                &entity_voxels,
-                &palette_mappings,
-            )?;
+                entity, &mut xml_writer, self.scene, None,
+                false, &entity_voxels, &palette_mappings,)?;
         }
         xml_writer.write_event(Event::End(end))?;
         Ok(())
