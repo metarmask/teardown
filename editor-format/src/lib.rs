@@ -310,7 +310,7 @@ impl VoxStoreFile {
     }
 
     fn write(&mut self) -> Result<(), Box<dyn Error>> {
-        self.vox.to_owned().write(&mut File::create(&self.path)?)?;
+        self.vox.clone().write(&mut File::create(&self.path)?)?;
         self.dirty = false;
         Ok(())
     }
@@ -347,7 +347,7 @@ impl VoxStore {
         for palette in palettes {
             let hash_n = compute_hash_n(palette);
             vec.push(match self.palette_files.entry(hash_n) {
-                Entry::Occupied(occupant) => occupant.get().to_owned(),
+                Entry::Occupied(occupant) => occupant.get().clone(),
                 Entry::Vacant(vacancy) => vacancy
                     .insert(Arc::new(Mutex::new(
                         VoxStoreFile::new(
@@ -357,7 +357,7 @@ impl VoxStore {
                         )
                         .unwrap(),
                     )))
-                    .to_owned(),
+                    .clone(),
             })
         }
         vec
@@ -462,7 +462,7 @@ fn remap_materials(orig_palette: &[Material; 256]) -> PaletteMapping {
                 kind_to_orig
                     .entry(orig_material.kind)
                     .or_default()
-                    .push((i, orig_material.to_owned()));
+                    .push((i, orig_material.clone()));
             }
             let mut filler_originals = kind_to_orig.remove(&MaterialKind::None).unwrap_or_default();
             let mut new_palette_interm: [Option<Material>; 256] =
@@ -563,7 +563,7 @@ impl SceneWriter<'_> {
         let mut entity_voxels: HashMap<u32, Voxels> = HashMap::new();
         for entity in self.scene.iter_entities() {
             if let EntityKind::Shape(shape) = &entity.kind {
-                let mut voxels: Voxels = shape.voxels.to_owned();
+                let mut voxels: Voxels = shape.voxels.clone();
                 if let Some(PaletteMapping::Remapped(remapped)) =
                     palette_mappings.get(shape.palette as usize)
                 {
@@ -698,7 +698,7 @@ fn vox_corrected_transform(parent: Option<&Entity>) -> Option<Transform> {
             if let EntityKind::Shape(shape) = &parent.kind {
                 transform_shape(&transform, shape.voxels.size)
             } else {
-                transform.to_owned()
+                transform.clone()
             }
         })
     })
@@ -890,13 +890,11 @@ pub fn write_entity_xml<W: Write>(
         }
         #[rustfmt::skip]
         EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
-            for pos in &[knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to)] {
-                if let Some(pos) = pos {
-                    writer.write_event(Event::Empty(
-                        BytesStart::owned_name("location")
-                            .with_attributes(vec![("pos", join_as_strings(pos.iter()).as_ref())]),
-                    ))?;
-                }
+            for pos in [knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to)].iter().flatten() {
+                writer.write_event(Event::Empty(
+                    BytesStart::owned_name("location")
+                        .with_attributes(vec![("pos", join_as_strings(pos.iter()).as_ref())]),
+                ))?;
             }
         },
         _ => {}

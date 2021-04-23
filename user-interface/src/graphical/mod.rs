@@ -119,7 +119,7 @@ impl Level {
         match message {
             LevelMessage::ConvertXML => match mem::replace(&mut self.scene, Load::Loading) {
                 Load::Loaded(scene) => {
-                    let dirs = dirs.to_owned();
+                    let dirs = dirs.clone();
                     let vox_store = vox_store.clone();
                     return Command::perform(
                         async move {
@@ -164,7 +164,7 @@ impl Level {
         let no_scene = matches!(self.scene, Load::None);
 
         if no_scene || force {
-            let path = self.path.to_owned();
+            let path = self.path.clone();
             self.scene = Load::Loading;
             Command::perform(async { parse_file(path) }, |w| {
                 LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| err.to_string())))

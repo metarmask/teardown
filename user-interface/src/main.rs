@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use iced::{Application, Settings};
 use steamy_vdf as vdf;
 use structopt::StructOpt;
-use teardown_bin_format::{parse_file, EntityKind};
+use teardown_bin_format::parse_file;
 use teardown_editor_format::{SceneWriterBuilder, VoxStore};
 use thiserror::Error;
 use Error::UnexpectedVDF as VDFErr;
@@ -88,15 +88,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Subcommand::ShowVox { vox_file } => {
                 let semantic = vox::syntax::parse_file(vox_file);
                 println!("{:?}", semantic);
-                // use std::convert::TryFrom;
-                // let mut vox_fs_file = File::open(vox_file)?;
-                // let mut vox_file_bytes = Vec::new();
-                // vox_fs_file.read_to_end(&mut vox_file_bytes)?;
-                // let (_, syntaxical_vox_file) =
-                // vox::syntax::VoxFile::parse_flat(&vox_file_bytes).unwrap();
-                // let semantic_vox_file =
-                // vox::semantic::VoxFile::try_from(syntaxical_vox_file)?;
-                // println!("{:#?}", semantic_vox_file);
             }
             Subcommand::ConvertAll {
                 teardown_folder,
@@ -105,7 +96,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let data_folder = teardown_folder.join("data");
                 let mut created_mods = HashSet::new();
                 let vox_store = VoxStore::new(teardown_folder).unwrap();
-                let mut sound_files = HashSet::new();
                 for file in fs::read_dir(data_folder.join("bin"))? {
                     let file = file?;
                     println!("Reading {}", file.file_name().to_string_lossy());
@@ -123,33 +113,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let &level_id = registry
                         .get("game.levelid")
                         .expect("levels should have game.levelid registry entry");
-                    if level_id.is_empty() {
-                        continue;
-                    }
+                    #[rustfmt::skip] if level_id.is_empty() { continue; }
                     let mod_dir = mods_folder.join(level_name);
-                    if !created_mods.insert(level_name.to_owned()) {
-                        continue;
-                    }
-                    for entity in scene.iter_entities() {
-                        if let EntityKind::Light(light) = &entity.kind {
-                            sound_files.insert(
-                                light.sound.path.to_owned() + " " + &light.sound.volume.to_string(),
-                            );
-                            // println!("### {}", entity.desc);
-                            // let materials = &scene.palettes[shape.palette as
-                            // usize].materials; for
-                            // material in materials.iter() {
-                            //     match material.kind {
-                            //         teardown_bin_format::MaterialKind::None
-                            // => {}         kind =>
-                            // {
-                            // print!("{:?}:{:?} ", kind, material.replacable);
-                            //         }
-                            //     }
-                            // }
-                            // println!("")
-                        }
-                    }
+                    #[rustfmt::skip] if !created_mods.insert(level_name.to_owned()) { continue; }
                     SceneWriterBuilder::default()
                         .vox_store(vox_store.clone())
                         .mod_dir(mod_dir)
@@ -159,18 +125,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .write_scene()
                         .unwrap();
                 }
-                // println!("{:?}", sound_files);
                 for mod_ in &created_mods {
                     fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
+                    #[rustfmt::skip]
                     fs::write(
                         mods_folder.join(mod_).join("info.txt"),
                         format!(
                             "name = {}\
                             author = Tuxedo Labs\
                             description = ",
-                            mod_.to_string_lossy()
-                        ),
-                    )?;
+                            mod_.to_string_lossy()))?;
                 }
             }
             Subcommand::Load { then, bin_select } => {
@@ -182,20 +146,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     BinSelect {
                         name: Some(name), ..
                     } => {
-                        let level_paths = fs::read_dir(dirs.main.join("data").join("bin"))
-                            .unwrap()
+                        #[rustfmt::skip]
+                        let level_paths = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
                             .map(|res| {
                                 res.map(|dir_entry| {
                                     let path = dir_entry.path();
-                                    (level_name_from_path(&path), path)
-                                })
-                            })
-                            .collect::<Result<Vec<_>, _>>()
-                            .unwrap();
-                        level_paths
-                            .into_iter()
-                            .find(|(other_name, _)| name == other_name.as_ref())
-                            .expect("no level with that name")
+                                    (level_name_from_path(&path), path)})})
+                            .collect::<Result<Vec<_>, _>>().unwrap();
+                        #[rustfmt::skip]
+                        level_paths.into_iter()
+                            .find(|(other_name, _)| name == other_name.as_ref()).expect("no level with that name")
                             .1
                     }
                     _ => dirs.progress.join("quicksave.bin"),
@@ -347,7 +307,7 @@ fn find_steam_app(app_id: &str) -> Result<SteamApp> {
                     .as_table().context(VDFErr)?
                     .get("AppState").context(VDFErr)?
                     .as_table().context(VDFErr)?
-                    .to_owned();
+                    .clone();
                 return Ok(SteamApp {
                     library_path: library_dir,
                     manifest,

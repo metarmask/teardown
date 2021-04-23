@@ -1,10 +1,10 @@
 #![feature(array_map, array_chunks)]
 use std::{
     error::Error,
-    io::{self, Cursor},
+    fs::File,
+    io::{self, Cursor, Read},
     path::Path,
 };
-use std::{fs::File, io::Read};
 
 use flate2::read::ZlibDecoder;
 use owning_ref::OwningHandle;
@@ -33,11 +33,11 @@ fn decompress_if_needed(bytes: Vec<u8>) -> Result<Vec<u8>, io::Error> {
 }
 
 pub fn read_to_uncompressed<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Error> {
-    Ok(decompress_if_needed(read_bytes(path)?)?)
+    decompress_if_needed(read_bytes(path)?)
 }
 
 pub fn parse_uncompressed(bytes: &[u8]) -> Result<Scene<'_>, ParseError<'_>> {
-    Ok(Scene::parse(&mut Parser::new(bytes))?)
+    Scene::parse(&mut Parser::new(bytes))
 }
 
 pub type OwnedScene = OwningHandle<Vec<u8>, Box<Scene<'static>>>;

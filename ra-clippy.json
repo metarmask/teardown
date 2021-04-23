@@ -4,9 +4,10 @@
         "-W", "clippy::all",
         "-W", "clippy::pedantic",
         "-A", "clippy::wildcard-imports",
-        "-A", "clippy::missing_errors_doc",
+        "-A", "clippy::missing-errors-doc",
+        "-A", "clippy::missing-panics-doc",
         "-A", "clippy::cast-precision-loss",
-        "-A", "clippy::non_ascii_literal",
+        "-A", "clippy::non-ascii-literal",
         "-A", "clippy::implicit-hasher"
     ]
 }

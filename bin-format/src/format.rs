@@ -870,13 +870,13 @@ mod convert_nalgebra {
         }
     }
 
-    impl Into<Isometry3<f32>> for Transform {
-        fn into(self) -> Isometry3<f32> {
+    impl From<Transform> for Isometry3<f32> {
+        fn from(transform: Transform) -> Isometry3<f32> {
             Isometry3 {
-                translation: Point3::from_slice(&self.pos).coords.into(),
+                translation: Point3::from_slice(&transform.pos).coords.into(),
                 rotation: UnitQuaternion::from_quaternion(Quaternion::from_parts(
-                    self.rot[3],
-                    Point3::from_slice(&self.rot[0..3]).coords,
+                    transform.rot[3],
+                    Point3::from_slice(&transform.rot[0..3]).coords,
                 )),
             }
         }
