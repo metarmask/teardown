@@ -432,6 +432,7 @@ fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
     }
 }
 
+#[derive(Debug)]
 pub enum PaletteMapping<'a> {
     Original(&'a [Material; 256]),
     Remapped(Box<([Material; 256], [u8; 256])>),
@@ -743,14 +744,11 @@ impl ToXMLAttributes for Script<'_> {
     #[rustfmt::skip]
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         iter::once(("file",
-            match Path::new(self.path).strip_prefix("data/script/") {
-                Ok(ok) => ok.display().to_string(),
-                Err(_) => self.path.to_string(),
-            }))
+            Path::new(self.path).strip_prefix("data/script/")
+            .map_or_else(|_| self.path.into(), |ok| ok.display().to_string())))
         .chain(
             ["param0", "param1", "param2", "param3"].iter().copied()
-            .zip(
-            self.params.0.iter().map(|(key, value)| format!("{}={}", key, value))))
+            .zip(self.params.0.iter().map(|(key, value)| format!("{}={}", key, value))))
         .collect()
     }
 }
@@ -824,24 +822,17 @@ pub fn write_entity_xml<W: Write>(
             dynamic = body.dynamic == 1;
             ("body", body.to_xml_attrs())
         }
+        #[rustfmt::skip]
         EntityKind::Shape(shape) => ("vox", vec![
-            (
-                "file",
-                format!(
-                    "hash/{}.vox",
+            ("file",
+                format!("hash/{}.vox",
                     hash_n_to_str(compute_hash_n(
                         palette_remappings[shape.palette as usize].materials_as_ref()
-                    ))
-                ),
-            ),
-            (
-                "object",
-                hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap())),
-            ),
-            (
-                "texture",
-                format!("{} {}", shape.texture_tile, shape.texture_weight),
-            ),
+                    ))),),
+            ("object",
+                hash_n_to_str(compute_hash_n(entity_voxels.get(&entity.handle).unwrap()))),
+            ("texture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight)),
             ("density", shape.density.to_string()),
             ("strength", shape.strength.to_string()),
         ]),
