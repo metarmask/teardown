@@ -33,29 +33,52 @@ enum Error {
 }
 
 #[derive(StructOpt)]
+enum AfterLoadCmd {
+    Convert {
+        #[structopt(default_value = "converted")]
+        mod_name: String,
+        #[structopt(default_value = "main")]
+        level_name: String,
+    },
+    PrintEnv,
+}
+
+#[derive(StructOpt)]
 enum Subcommand {
     ShowVox {
         vox_file: PathBuf,
-    },
-    PrintEnv {
-        bin_file: PathBuf,
-    },
-    Convert {
-        bin_file: PathBuf,
-        teardown_folder: PathBuf,
-        mod_folder: PathBuf,
-        level_name: String,
     },
     ConvertAll {
         teardown_folder: PathBuf,
         mods_folder: PathBuf,
     },
+    /// Loads a level. Defaults to quicksave.
+    Load {
+        #[structopt(flatten)]
+        bin_select: BinSelect,
+        #[structopt(subcommand)]
+        then: AfterLoadCmd,
+    },
+}
+
+#[derive(Default, StructOpt)]
+struct BinSelect {
+    #[structopt(long)]
+    path: Option<PathBuf>,
+    #[structopt(long)]
+    name: Option<String>,
 }
 
 #[derive(StructOpt)]
 struct Options {
     #[structopt(subcommand)]
     command: Option<Subcommand>,
+}
+
+fn level_name_from_path<P: AsRef<Path>>(path: P) -> String {
+    let mut path = path.as_ref().to_owned();
+    path.set_extension("");
+    path.file_name().unwrap().to_string_lossy().to_string()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,22 +97,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // let semantic_vox_file =
                 // vox::semantic::VoxFile::try_from(syntaxical_vox_file)?;
                 // println!("{:#?}", semantic_vox_file);
-            }
-            Subcommand::Convert {
-                bin_file,
-                teardown_folder,
-                mod_folder,
-                level_name,
-            } => {
-                let scene = parse_file(bin_file)?;
-                #[rustfmt::skip]
-                SceneWriterBuilder::default()
-                    .vox_store(VoxStore::new(teardown_folder).unwrap())
-                    .mod_dir(mod_folder)
-                    .name(level_name)
-                    .scene(&scene)
-                    .build().unwrap()
-                    .write_scene().unwrap();
             }
             Subcommand::ConvertAll {
                 teardown_folder,
@@ -166,9 +173,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )?;
                 }
             }
-            Subcommand::PrintEnv { bin_file: path } => {
-                let scene = parse_file(path)?;
-                println!("{:#?}", scene.environment);
+            Subcommand::Load { then, bin_select } => {
+                let dirs = find_teardown_dirs().unwrap();
+                let scene = parse_file(match bin_select {
+                    BinSelect {
+                        path: Some(file), ..
+                    } => file,
+                    BinSelect {
+                        name: Some(name), ..
+                    } => {
+                        let level_paths = fs::read_dir(dirs.main.join("data").join("bin"))
+                            .unwrap()
+                            .map(|res| {
+                                res.map(|dir_entry| {
+                                    let path = dir_entry.path();
+                                    (level_name_from_path(&path), path)
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()
+                            .unwrap();
+                        level_paths
+                            .into_iter()
+                            .find(|(other_name, _)| name == other_name.as_ref())
+                            .expect("no level with that name")
+                            .1
+                    }
+                    _ => dirs.progress.join("quicksave.bin"),
+                })?;
+                match then {
+                    AfterLoadCmd::Convert {
+                        mod_name,
+                        level_name,
+                    } => {
+                        #[rustfmt::skip]
+                            SceneWriterBuilder::default()
+                                .vox_store(VoxStore::new(dirs.main).unwrap())
+                                .mod_dir(dirs.mods.join(mod_name))
+                                .name(level_name)
+                                .scene(&scene)
+                                .build().unwrap()
+                                .write_scene().unwrap();
+                    }
+                    AfterLoadCmd::PrintEnv => {
+                        println!("{:#?}", scene.environment);
+                    }
+                }
             }
         }
     } else {
