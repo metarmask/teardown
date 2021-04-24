@@ -382,22 +382,24 @@ pub struct Vehicle<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct VehicleProperties<'a> {
+    /// In m/s
+    pub max_speed: f32,
     #[doc(hidden)]
-    pub z_f32_2: [f32; 2],
+    pub z1_f32: f32,
     pub spring: f32,
     pub damping: f32,
     pub acceleration: f32,
     pub strength: f32,
     pub friction: f32,
     #[doc(hidden)]
-    pub z1_f32: f32,
+    pub z2_f32: f32,
     #[doc(hidden)]
     pub z1_u8: u8,
     pub antispin: f32,
     pub steerassist: f32,
     // Possible value: 1.5
     #[doc(hidden)]
-    pub z2_f32: f32,
+    pub z3_f32: f32,
     pub antiroll: f32,
     pub sound: VehicleSound<'a>,
 }

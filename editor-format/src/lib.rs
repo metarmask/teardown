@@ -750,7 +750,7 @@ impl ToXMLAttributes for Vehicle<'_> {
             ),
             ("spring", props.spring.to_string()),
             ("damping", props.damping.to_string()),
-            //("topspeed", ),
+            ("topspeed", (props.max_speed * 3.6).to_string()),
             ("acceleration", props.acceleration.to_string()),
             ("strength", props.strength.to_string()),
             ("antispin", props.antispin.to_string()),
