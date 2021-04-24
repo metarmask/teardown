@@ -691,29 +691,24 @@ fn convert_material(material: &Material) -> VoxMaterial {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let mut vox_mat =
         VoxMaterial::new_color([r, g, b, a].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
-    vox_mat.ior = Some(0.3);
-    vox_mat.spec_p = Some(0.);
-    vox_mat.weight = Some(if material.shinyness > 0.0 {
-        material.reflectivity
-    } else {
-        0.0
-    });
-    vox_mat.rough = Some(1.0 - material.metalness);
     vox_mat.kind = if vox_mat.rgba[3] < 255 {
-        vox_mat.alpha = Some(0.5);
+        vox_mat.alpha = Some(a);
         VoxMaterialKind::Glass
     } else if material.emission > 0.0 {
+        vox_mat.flux = Some(1.0);
+        vox_mat.emit = Some(material.emission);
         VoxMaterialKind::Emit
-    } else if material.metalness == 0.0 && material.reflectivity == 0.0 {
-        VoxMaterialKind::Diffuse
     } else {
-        // To match the original files. Is interpreted as metal if together with spec_p
-        // and weight.
-        if material.shinyness > 0.0 {
-            VoxMaterialKind::Metal
-        } else {
-            VoxMaterialKind::Plastic
+        #[allow(clippy::float_cmp)]
+        if material.shinyness != material.reflectivity {
+            eprintln!(
+                "shinyness {} != reflectivity {} in {:?}",
+                material.shinyness, material.reflectivity, material
+            )
         }
+        vox_mat.metal = Some(material.reflectivity);
+        vox_mat.rough = Some(1.0 - material.metalness);
+        VoxMaterialKind::Metal
     };
     vox_mat
 }

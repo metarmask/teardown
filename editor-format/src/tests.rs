@@ -353,7 +353,7 @@ mod convert_material {
         });
         assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
         assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 0.5);
-        assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 0.);
+        assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 0.5);
     }
 
     #[test]
