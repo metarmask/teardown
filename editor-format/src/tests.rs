@@ -251,6 +251,30 @@ mod palette {
     }
 
     #[test]
+    fn replace_replacables() {
+        let mut materials: [Material; 256] = vec![Material::default(); 256].try_into().unwrap();
+        #[allow(clippy::needless_range_loop)]
+        for i in 169..=176 {
+            materials[i] = Material {
+                replacable: true,
+                kind: MaterialKind::HardMetal,
+                ..Material::default()
+            };
+        }
+        materials[1] = Material {
+            replacable: false,
+            kind: MaterialKind::HardMetal,
+            ..Material::default()
+        };
+        if let PaletteMapping::Remapped(boxed) = remap_materials(&materials) {
+            let (remapped, indices_orig_to_new) = boxed.as_ref();
+            assert_eq!(remapped[indices_orig_to_new[1] as usize].replacable, false);
+        } else {
+            panic!("should be remapped")
+        }
+    }
+
+    #[test]
     fn keep_brake_light_index() {
         let mut materials: [Material; 256] = vec![Material::default(); 256].try_into().unwrap();
         materials[6] = Material {

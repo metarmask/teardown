@@ -407,16 +407,17 @@ fn iter_material_kinds() -> impl Iterator<Item = MaterialKind> {
 
 fn material_kind_for_index(index: u8) -> MaterialKind {
     for material_kind in iter_material_kinds() {
-        let range = range_for_material_kind(material_kind);
-        if index >= range[0] && index <= range[1] {
-            return material_kind;
+        if let Some(range) = range_for_material_kind(material_kind) {
+            if index >= range[0] && index <= range[1] {
+                return material_kind;
+            }
         }
     }
     MaterialKind::None
 }
 
-fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
-    match material_kind {
+fn range_for_material_kind(material_kind: MaterialKind) -> Option<[u8; 2]> {
+    Some(match material_kind {
         MaterialKind::Glass => [1, 8],
         MaterialKind::Foliage => [9, 24],
         MaterialKind::Dirt => [25, 40],
@@ -427,12 +428,12 @@ fn range_for_material_kind(material_kind: MaterialKind) -> [u8; 2] {
         MaterialKind::Metal => [121, 136],
         MaterialKind::HeavyMetal => [137, 152],
         MaterialKind::Plastic => [153, 168],
-        MaterialKind::HardMetal => [169, 152],
+        MaterialKind::HardMetal => [169, 176],
         MaterialKind::HardMasonry => [177, 184],
         MaterialKind::Unknown13 => [185, 224],
         MaterialKind::Unphysical => [225, 240],
-        MaterialKind::None => [241, 255],
-    }
+        MaterialKind::None => return None,
+    })
 }
 
 #[derive(Debug)]
@@ -450,72 +451,105 @@ impl PaletteMapping<'_> {
     }
 }
 
+fn try_swap_index(
+    i_u8: u8,
+    orig_palette: &[Material; 256],
+    new_to_orig: &mut [u8; 256],
+    correct: &mut [bool; 256],
+) -> Result<(), ()> {
+    let i = i_u8 as usize;
+    if correct[i] {
+        Ok(())
+    } else {
+        let material = &orig_palette[new_to_orig[i] as usize];
+        if let Some(range) = range_for_material_kind(material.kind) {
+            for swap_i_u8 in range[0]..=range[1] {
+                let swap_i = swap_i_u8 as usize;
+                if !correct[swap_i] {
+                    new_to_orig.swap(i, swap_i);
+                    correct[swap_i] = true;
+                    return Ok(());
+                }
+            }
+            if !material.replacable {
+                for swap_i_u8 in range[0]..=range[1] {
+                    let swap_i = swap_i_u8 as usize;
+                    if orig_palette[new_to_orig[swap_i] as usize].replacable {
+                        correct[swap_i] = false;
+                        new_to_orig.swap(i, swap_i);
+                        correct[swap_i] = true;
+                        return Ok(());
+                    }
+                }
+            }
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// Rearrange materials of a palette so that the materials are at the correct
 /// indices
 #[allow(clippy::cast_possible_truncation)] // Never
 fn remap_materials(orig_palette: &[Material; 256]) -> PaletteMapping {
-    for (i, orig_material) in orig_palette.iter().enumerate() {
-        if orig_material.kind != MaterialKind::None
-            && material_kind_for_index(i as u8) != orig_material.kind
-        {
-            let mut kind_to_orig: HashMap<MaterialKind, Vec<(usize, Material)>> = HashMap::new();
-            let mut indices_orig_to_new: [u8; 256] =
-                (0..=255_u8).collect::<Vec<_>>().try_into().unwrap();
-            for (i, orig_material) in orig_palette.iter().enumerate() {
-                kind_to_orig
-                    .entry(orig_material.kind)
-                    .or_default()
-                    .push((i, orig_material.clone()));
+    // let mut sneaky_palette = orig_palette.to_owned();
+    // for material in sneaky_palette.iter_mut() {
+    //     if material.replacable {
+    //         *material = Material::default();
+    //     }
+    // }
+    // let orig_palette = &sneaky_palette;
+    let mut i_eq_value = [0_u8; 256];
+    let mut correct = [false; 256];
+    for i in 0..=255 {
+        let i_u8 = i as u8;
+        i_eq_value[i] = i_u8;
+        correct[i] = material_kind_for_index(i_u8) == orig_palette[i].kind;
+    }
+    let mut new_to_orig = i_eq_value;
+    let mut priority = i_eq_value;
+    #[rustfmt::skip]
+    priority.sort_unstable_by_key(|mat_i| match orig_palette[*mat_i as usize] {
+        Material { kind: MaterialKind::None, replacable: true, .. } => 2,
+        Material { replacable: true, .. } => 1,
+        _ => 0,
+    });
+    let mut overflowed = Vec::new();
+    for &i in &priority {
+        if let Err(()) = try_swap_index(i, orig_palette, &mut new_to_orig, &mut correct) {
+            let material = &orig_palette[new_to_orig[i as usize] as usize];
+            if !material.replacable {
+                overflowed.push(new_to_orig[i as usize])
             }
-            let mut filler_originals = kind_to_orig.remove(&MaterialKind::None).unwrap_or_default();
-            let mut new_palette_interm: [Option<Material>; 256] =
-                vec![None; 256].try_into().unwrap();
-            let mut forced_filler_orig_indices = Vec::new();
-            for (kind, mut kind_originals) in kind_to_orig {
-                kind_originals.sort_by_key(|(_, m)| m.replacable);
-                let range = range_for_material_kind(kind);
-                let mut kind_originals_iter = kind_originals.into_iter();
-                for (new_i, (orig_i, material)) in
-                    (range[0]..=range[1]).zip(kind_originals_iter.by_ref())
-                {
-                    indices_orig_to_new[orig_i] = new_i;
-                    new_palette_interm[new_i as usize] = Some(material);
-                }
-                filler_originals.extend(kind_originals_iter.inspect(|(orig_i, material)| {
-                    if !material.replacable {
-                        forced_filler_orig_indices.push(*orig_i);
-                    }
-                }));
-            }
-            for (new_i, ok) in new_palette_interm.iter_mut().enumerate() {
-                if ok.is_none() {
-                    let (orig_i, none_material) = if matches!(new_i, 0 | 255) {
-                        filler_originals.remove(0)
-                    } else {
-                        filler_originals.pop().unwrap()
-                    };
-                    indices_orig_to_new[orig_i] = new_i as u8;
-                    *ok = Some(none_material);
-                }
-            }
-            let new_palette = new_palette_interm.map(Option::unwrap);
-            if !forced_filler_orig_indices.is_empty() {
-                warn_wrong_indices(
-                    forced_filler_orig_indices,
-                    orig_palette,
-                    &new_palette,
-                    &indices_orig_to_new,
-                )
-            }
-            return PaletteMapping::Remapped(Box::new((new_palette, indices_orig_to_new)));
         }
     }
-    PaletteMapping::Original(orig_palette)
+    if new_to_orig == i_eq_value {
+        return PaletteMapping::Original(orig_palette);
+    }
+    let mut orig_to_new = i_eq_value;
+    for (new, &orig) in new_to_orig.iter().enumerate() {
+        orig_to_new[orig as usize] = new as u8;
+    }
+    let new_palette: [Material; 256] = (0..256_usize)
+        .map(|i| orig_palette[new_to_orig[i] as usize].clone())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    if !overflowed.is_empty() {
+        warn_wrong_indices(
+            overflowed.as_ref(),
+            &orig_palette,
+            &new_palette,
+            &orig_to_new,
+        )
+    }
+    PaletteMapping::Remapped(Box::new((new_palette, orig_to_new)))
 }
 
 #[cold]
 fn warn_wrong_indices(
-    forced_filler_orig_indices: Vec<usize>,
+    forced_filler_orig_indices: &[u8],
     orig_palette: &[Material; 256],
     new_palette: &[Material; 256],
     indices_orig_to_new: &[u8; 256],
@@ -524,13 +558,16 @@ fn warn_wrong_indices(
         "Failed mappings in palette {}: {}",
         hash_n_to_str(compute_hash_n(&new_palette)),
         forced_filler_orig_indices
-            .into_iter()
-            .map(|orig_i| format!(
-                "{:?} -> {:?} ({})",
-                orig_palette[orig_i].kind,
-                material_kind_for_index(indices_orig_to_new[orig_i]),
-                indices_orig_to_new[orig_i],
-            ))
+            .iter()
+            .map(|orig_i| {
+                let orig_i = *orig_i as usize;
+                format!(
+                    "{:?} -> {:?} ({})",
+                    orig_palette[orig_i].kind,
+                    material_kind_for_index(indices_orig_to_new[orig_i]),
+                    indices_orig_to_new[orig_i],
+                )
+            })
             .collect::<Vec<_>>()
             .join(", ")
     )
