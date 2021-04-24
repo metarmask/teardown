@@ -83,107 +83,105 @@ fn level_name_from_path<P: AsRef<Path>>(path: P) -> String {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Options::from_args();
-    if let Some(command) = args.command {
-        match command {
-            Subcommand::ShowVox { vox_file } => {
-                let semantic = vox::syntax::parse_file(vox_file);
-                println!("{:?}", semantic);
+    #[rustfmt::skip]
+    let command = if let Some(command) = args.command { command } else {
+        graphical::App::run(Settings::default())?; return Ok(()); };
+    match command {
+        Subcommand::ShowVox { vox_file } => {
+            let semantic = vox::syntax::parse_file(vox_file);
+            println!("{:?}", semantic);
+        }
+        Subcommand::ConvertAll {
+            teardown_folder,
+            mods_folder,
+        } => {
+            let data_folder = teardown_folder.join("data");
+            let mut created_mods = HashSet::new();
+            let vox_store = VoxStore::new(teardown_folder).unwrap();
+            for file in fs::read_dir(data_folder.join("bin"))? {
+                let file = file?;
+                println!("Reading {}", file.file_name().to_string_lossy());
+                let scene = parse_file(file.path())?;
+                let registry = &scene.registry.0;
+                let mut level_path = PathBuf::from(
+                    registry
+                        .get("game.levelpath")
+                        .expect("levels should have game.levelpath registry entry"),
+                );
+                level_path.set_extension("");
+                // Example: lee
+                let level_name = level_path.file_name().unwrap();
+                // Example: lee_tower
+                let &level_id = registry
+                    .get("game.levelid")
+                    .expect("levels should have game.levelid registry entry");
+                #[rustfmt::skip] if level_id.is_empty() { continue; }
+                let mod_dir = mods_folder.join(level_name);
+                #[rustfmt::skip] if !created_mods.insert(level_name.to_owned()) { continue; }
+                SceneWriterBuilder::default()
+                    .vox_store(vox_store.clone())
+                    .mod_dir(mod_dir)
+                    .scene(&scene)
+                    .build()
+                    .unwrap()
+                    .write_scene()
+                    .unwrap();
             }
-            Subcommand::ConvertAll {
-                teardown_folder,
-                mods_folder,
-            } => {
-                let data_folder = teardown_folder.join("data");
-                let mut created_mods = HashSet::new();
-                let vox_store = VoxStore::new(teardown_folder).unwrap();
-                for file in fs::read_dir(data_folder.join("bin"))? {
-                    let file = file?;
-                    println!("Reading {}", file.file_name().to_string_lossy());
-                    let scene = parse_file(file.path())?;
-                    let registry = &scene.registry.0;
-                    let mut level_path = PathBuf::from(
-                        registry
-                            .get("game.levelpath")
-                            .expect("levels should have game.levelpath registry entry"),
-                    );
-                    level_path.set_extension("");
-                    // Example: lee
-                    let level_name = level_path.file_name().unwrap();
-                    // Example: lee_tower
-                    let &level_id = registry
-                        .get("game.levelid")
-                        .expect("levels should have game.levelid registry entry");
-                    #[rustfmt::skip] if level_id.is_empty() { continue; }
-                    let mod_dir = mods_folder.join(level_name);
-                    #[rustfmt::skip] if !created_mods.insert(level_name.to_owned()) { continue; }
-                    SceneWriterBuilder::default()
-                        .vox_store(vox_store.clone())
-                        .mod_dir(mod_dir)
-                        .scene(&scene)
-                        .build()
-                        .unwrap()
-                        .write_scene()
-                        .unwrap();
-                }
-                for mod_ in &created_mods {
-                    fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
+            for mod_ in &created_mods {
+                fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
+                #[rustfmt::skip]
+                fs::write(
+                    mods_folder.join(mod_).join("info.txt"),
+                    format!(
+                        "name = {}\
+                        author = Tuxedo Labs\
+                        description = ",
+                        mod_.to_string_lossy()))?;
+            }
+        }
+        Subcommand::Load { then, bin_select } => {
+            let dirs = find_teardown_dirs().unwrap();
+            let scene = parse_file(match bin_select {
+                BinSelect {
+                    path: Some(file), ..
+                } => file,
+                BinSelect {
+                    name: Some(name), ..
+                } => {
                     #[rustfmt::skip]
-                    fs::write(
-                        mods_folder.join(mod_).join("info.txt"),
-                        format!(
-                            "name = {}\
-                            author = Tuxedo Labs\
-                            description = ",
-                            mod_.to_string_lossy()))?;
+                    let level_paths = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
+                        .map(|res| {
+                            res.map(|dir_entry| {
+                                let path = dir_entry.path();
+                                (level_name_from_path(&path), path)})})
+                        .collect::<Result<Vec<_>, _>>().unwrap();
+                    #[rustfmt::skip]
+                    level_paths.into_iter()
+                        .find(|(other_name, _)| name == other_name.as_ref()).expect("no level with that name")
+                        .1
                 }
-            }
-            Subcommand::Load { then, bin_select } => {
-                let dirs = find_teardown_dirs().unwrap();
-                let scene = parse_file(match bin_select {
-                    BinSelect {
-                        path: Some(file), ..
-                    } => file,
-                    BinSelect {
-                        name: Some(name), ..
-                    } => {
-                        #[rustfmt::skip]
-                        let level_paths = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
-                            .map(|res| {
-                                res.map(|dir_entry| {
-                                    let path = dir_entry.path();
-                                    (level_name_from_path(&path), path)})})
-                            .collect::<Result<Vec<_>, _>>().unwrap();
-                        #[rustfmt::skip]
-                        level_paths.into_iter()
-                            .find(|(other_name, _)| name == other_name.as_ref()).expect("no level with that name")
-                            .1
-                    }
-                    _ => dirs.progress.join("quicksave.bin"),
-                })?;
-                match then {
-                    AfterLoadCmd::Convert {
-                        mod_name,
-                        level_name,
-                    } => {
-                        #[rustfmt::skip]
-                            SceneWriterBuilder::default()
-                                .vox_store(VoxStore::new(dirs.main).unwrap())
-                                .mod_dir(dirs.mods.join(mod_name))
-                                .name(level_name)
-                                .scene(&scene)
-                                .build().unwrap()
-                                .write_scene().unwrap();
-                    }
-                    AfterLoadCmd::PrintEnv => {
-                        println!("{:#?}", scene.environment);
-                    }
+                _ => dirs.progress.join("quicksave.bin"),
+            })?;
+            match then {
+                AfterLoadCmd::Convert {
+                    mod_name,
+                    level_name,
+                } => {
+                    #[rustfmt::skip]
+                        SceneWriterBuilder::default()
+                            .vox_store(VoxStore::new(dirs.main).unwrap())
+                            .mod_dir(dirs.mods.join(mod_name))
+                            .name(level_name)
+                            .scene(&scene)
+                            .build().unwrap()
+                            .write_scene().unwrap();
+                }
+                AfterLoadCmd::PrintEnv => {
+                    println!("{:#?}", scene.environment);
                 }
             }
         }
-    } else {
-        graphical::App::run(Settings::default())?;
     }
-
     Ok(())
 }
 
