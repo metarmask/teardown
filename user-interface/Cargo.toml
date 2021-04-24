@@ -7,7 +7,7 @@ edition = "2018"
 teardown-bin-format = { path = "../bin-format" }
 teardown-editor-format = { path = "../editor-format" }
 structopt = "0.3"
-vox = { git = "https://github.com/metarmask/vox-format", rev = "41b0630" }
+vox = { git = "https://github.com/metarmask/vox-format", rev = "1adf146" }
 rayon = "1.5"
 iced = "0.2"
 alphanumeric-sort = "1.4"

@@ -331,4 +331,100 @@ mod convert_material {
         assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 0.5);
         assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 0.);
     }
+
+    #[test]
+    fn s50_m0_re50_e0() {
+        let vox_mat = convert_material(&Material {
+            shinyness: 0.5,
+            metalness: 0.0,
+            reflectivity: 0.5,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
+        assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 0.5);
+        assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 1.0);
+    }
+
+    #[test]
+    fn s100_m100_re100_e0() {
+        let vox_mat = convert_material(&Material {
+            shinyness: 1.0,
+            metalness: 1.0,
+            reflectivity: 1.0,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
+        assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 1.0);
+        assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 0.0);
+    }
+
+    #[test]
+    fn s100_m50_re100_e0() {
+        let vox_mat = convert_material(&Material {
+            shinyness: 1.0,
+            metalness: 0.5,
+            reflectivity: 1.0,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
+        assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 1.0);
+        assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 0.5);
+    }
+
+    #[test]
+    fn s100_m0_re100_e0() {
+        let vox_mat = convert_material(&Material {
+            shinyness: 1.0,
+            metalness: 0.0,
+            reflectivity: 1.0,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
+        assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 1.0);
+        assert_relative_eq!(vox_mat.rough.unwrap_or_default(), 1.0);
+    }
+
+    fn vox_mat_emission(vox_mat: &VoxMaterial) -> f32 {
+        vox_mat.emit.unwrap_or_default() * 10_f32.powf(vox_mat.flux.unwrap_or_default() - 1.0)
+    }
+
+    #[test]
+    fn emission_100() {
+        let vox_mat = convert_material(&Material {
+            emission: 100.,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Emit);
+        assert_relative_eq!(vox_mat_emission(&vox_mat), 100.);
+    }
+
+    #[test]
+    fn emission_50() {
+        let vox_mat = convert_material(&Material {
+            emission: 50.,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Emit);
+        assert_relative_eq!(vox_mat_emission(&vox_mat), 50.);
+    }
+
+    #[test]
+    fn emission_05() {
+        let vox_mat = convert_material(&Material {
+            emission: 0.5,
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Emit);
+        assert_relative_eq!(vox_mat_emission(&vox_mat), 0.5);
+    }
+
+    #[test]
+    fn alpha_50() {
+        let vox_mat = convert_material(&Material {
+            rgba: Rgba([0., 0., 0., 0.5]),
+            ..Material::default()
+        });
+        assert_eq!(vox_mat.kind, VoxMaterialKind::Glass);
+        assert!(vox_mat.alpha.unwrap_or_default() < 1.0);
+    }
 }
