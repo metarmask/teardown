@@ -158,7 +158,7 @@ pub struct Material {
     pub metalness: f32,
     pub reflectivity: f32,
     pub emission: f32,
-    pub replacable: u8,
+    pub replacable: bool,
 }
 
 impl Hash for Material {
@@ -443,7 +443,7 @@ pub struct TintTable<'a>(&'a [u8; 256]);
 pub struct Palette<'a> {
     pub materials: [Material; 256],
     pub tint_tables: [TintTable<'a>; 8],
-    pub byte: u8,
+    pub z_u8_eq_0: u8,
 }
 
 impl fmt::Debug for Palette<'_> {
@@ -458,7 +458,7 @@ impl<'a> ::core::fmt::Display for Palette<'a> {
         let mut struct_ = f.debug_struct("Palette");
         struct_.field("materials", &self.materials);
         struct_.field("tint_tables", &(&self.tint_tables[0..8]));
-        struct_.field("byte", &self.byte);
+        struct_.field("z_u8_eq_0", &self.z_u8_eq_0);
         struct_.finish()
     }
 }

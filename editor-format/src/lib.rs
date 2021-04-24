@@ -479,7 +479,7 @@ fn remap_materials(orig_palette: &[Material; 256]) -> PaletteMapping {
                     new_palette_interm[new_i as usize] = Some(material);
                 }
                 filler_originals.extend(kind_originals_iter.inspect(|(orig_i, material)| {
-                    if material.replacable == 0 {
+                    if !material.replacable {
                         forced_filler_orig_indices.push(*orig_i);
                     }
                 }));
