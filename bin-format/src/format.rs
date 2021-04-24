@@ -436,14 +436,41 @@ pub struct Water {
     pub boundary_vertices: Vec<BoundaryVertex>,
 }
 
-#[derive(Debug, Clone, Parse)]
-pub struct TintTable<'a>(&'a [u8; 256]);
+const N_TINTS: usize = 2;
+const TINT_SHADES: usize = 4;
+const PALETTE_SIZE: usize = 256;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TintKind {
+    Black,
+    Yellow,
+}
 
 #[derive(Clone, Parse)]
 pub struct Palette<'a> {
-    pub materials: [Material; 256],
-    pub tint_tables: [TintTable<'a>; 8],
+    pub materials: [Material; PALETTE_SIZE],
+    pub tint_tables: &'a [u8; N_TINTS * PALETTE_SIZE * TINT_SHADES],
     pub z_u8_eq_0: u8,
+}
+
+impl Palette<'_> {
+    #[must_use]
+    pub fn tinted_material(
+        &self,
+        index: u8,
+        tint_kind: TintKind,
+        extra_steps: u8,
+    ) -> Option<&Material> {
+        let tint_kind_offset = PALETTE_SIZE
+            * TINT_SHADES
+            * match tint_kind {
+                TintKind::Black => 0,
+                TintKind::Yellow => 1,
+            };
+        let i = self.tint_tables
+            [tint_kind_offset + extra_steps as usize * TINT_SHADES + index as usize + 1];
+        (i != 0).then_some(&self.materials[i as usize])
+    }
 }
 
 impl fmt::Debug for Palette<'_> {
