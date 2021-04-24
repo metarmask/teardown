@@ -150,7 +150,7 @@ pub mod joint {
 }
 pub use joint::{Joint, Kind as JointKind, Knot, Rope};
 
-#[derive(Debug, Clone, Parse)]
+#[derive(Debug, Default, Clone, Parse)]
 pub struct Material {
     pub kind: MaterialKind,
     pub rgba: Rgba,
@@ -194,6 +194,12 @@ pub enum MaterialKind {
     HardMasonry = 12,
     Unknown13 = 13,
     Unphysical = 14,
+}
+
+impl Default for MaterialKind {
+    fn default() -> Self {
+        MaterialKind::None
+    }
 }
 
 pub struct SelfAndChildrenIter<'a> {
@@ -685,6 +691,12 @@ impl fmt::Debug for Rgba {
             write!(f, "{:02x}", channel)?;
         }
         Ok(())
+    }
+}
+
+impl Default for Rgba {
+    fn default() -> Self {
+        Rgba([0., 0., 0., 1.])
     }
 }
 
