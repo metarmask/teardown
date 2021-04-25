@@ -19,7 +19,6 @@ pub struct Scene<'a> {
     magic: [u8; 5],
     pub version: [u8; 3],
     pub level: &'a str,
-    #[doc(hidden)]
     pub z_bytes4_eq_0: [u8; 4],
     pub shadow_volume: [f32; 3],
     pub spawnpoint: Transform,
@@ -50,7 +49,6 @@ pub struct Fire {
     pub pos: [f32; 3],
     pub max_time: f32,
     pub time: f32,
-    #[doc(hidden)]
     pub z_u8_6: [u8; 6],
 }
 
@@ -59,7 +57,6 @@ pub mod light {
 
     #[derive(Debug, Clone, Parse)]
     pub struct Light<'a> {
-        #[doc(hidden)]
         pub z_u8_start: u8,
         pub kind: Kind,
         pub transform: Transform,
@@ -74,9 +71,7 @@ pub mod light {
         pub fog_scale: f32,
         pub area_size: [f32; 2],
         pub z1_f32: f32,
-        #[doc(hidden)]
         pub z_u8_17: [u8; 13],
-        #[doc(hidden)]
         pub z2_f32: f32,
         pub sound: Sound<'a>,
         pub glare: f32,
@@ -101,16 +96,13 @@ pub mod joint {
         pub kind: JointKind,
         pub shape_handles: [u32; 2],
         pub shape_positions: [[f32; 3]; 2],
-        #[doc(hidden)]
         pub z_f32_6: [f32; 6],
-        #[doc(hidden)]
         pub z_u8: u8,
         pub is_rope: u8,
         pub rot_strength: f32,
         pub rot_spring: f32,
         pub rot: [f32; 4],
         pub hinge_min_max: [f32; 2],
-        #[doc(hidden)]
         pub z_f32_2: [f32; 2],
         pub size: f32,
         #[structr(
@@ -134,9 +126,7 @@ pub mod joint {
         pub float: f32,
         pub strength: f32,
         pub max_stretch: f32,
-        #[doc(hidden)]
         pub z_f32_2: [f32; 2],
-        #[doc(hidden)]
         pub z_u8: u8,
         #[structr(len = "u32")]
         pub knots: Vec<Knot>,
@@ -344,31 +334,23 @@ pub struct Exhaust {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Vehicle<'a> {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub body_handle: u32,
     pub transform: Transform,
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
-    #[doc(hidden)]
     pub z_f32_not_health: f32,
     #[structr(len = "u32")]
     pub wheel_handles: Vec<u32>,
     // Split off to help with compile times
     pub properties: VehicleProperties<'a>,
-    #[doc(hidden)]
     pub z_f32_3: [f32; 3],
     pub player_pos: [f32; 3],
-    #[doc(hidden)]
     pub z_f32_6: [f32; 6],
     pub difflock: f32,
-    #[doc(hidden)]
     pub z6_f32_eq_1: f32,
-    #[doc(hidden)]
     pub z_u32: u32,
-    #[doc(hidden)]
     pub z2_u8: u8,
-    #[doc(hidden)]
     pub z7_f32_eq_0: f32,
     #[structr(len = "u32")]
     pub refs: Vec<u32>,
@@ -385,21 +367,17 @@ pub struct Vehicle<'a> {
 pub struct VehicleProperties<'a> {
     /// In m/s
     pub max_speed: f32,
-    #[doc(hidden)]
     pub z1_f32: f32,
     pub spring: f32,
     pub damping: f32,
     pub acceleration: f32,
     pub strength: f32,
     pub friction: f32,
-    #[doc(hidden)]
     pub z2_f32: f32,
-    #[doc(hidden)]
     pub z1_u8: u8,
     pub antispin: f32,
     pub steerassist: f32,
     // Possible value: 1.5
-    #[doc(hidden)]
     pub z3_f32: f32,
     pub antiroll: f32,
     pub sound: VehicleSound<'a>,
@@ -419,7 +397,6 @@ fn guess_arm_rot<'p>(parser: &mut Parser<'p>) -> Result<Option<f32>, ParseError<
 #[derive(Debug, Clone, Parse)]
 pub struct Vital {
     pub body_handle: u32,
-    #[doc(hidden)]
     pub z_f32: f32,
     pub pos: [f32; 3],
     pub shape_index: u32,
@@ -433,7 +410,6 @@ pub struct VehicleSound<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Water {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub transform: Transform,
     pub depth: f32,
@@ -501,13 +477,11 @@ impl<'a> ::core::fmt::Display for Palette<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Script<'a> {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub path: &'a str,
     pub params: Registry<'a>,
     pub last_update: f32,
     pub time: f32,
-    #[doc(hidden)]
     pub z_u8_4: [u8; 4],
     pub table: LuaTable<'a>,
     #[structr(len = "u32")]
@@ -544,7 +518,6 @@ pub mod environment {
         /// In radians
         pub rotation: f32,
         pub sun: Sun,
-        #[doc(hidden)]
         pub z_u8: u8,
         pub constant: Rgba,
         pub ambient_light: f32,
@@ -584,7 +557,6 @@ pub use environment::Environment;
 
 #[derive(Debug, Clone, Parse)]
 pub struct Trigger<'a> {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub transform: Transform,
     pub type_: TriggerGeometryKind,
@@ -614,22 +586,18 @@ pub enum TriggerGeometryKind {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Body {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub transform: Transform,
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
     pub dynamic: u8,
     pub active: u8,
-    #[doc(hidden)]
     pub z_u8: u8,
 }
 
 #[derive(Debug, Clone, Parse)]
 pub struct Wheel<'a> {
-    #[doc(hidden)]
     pub z_u8_start: u8,
-    #[doc(hidden)]
     pub z_u8_108: &'a [u8; 108],
 }
 
@@ -665,7 +633,6 @@ impl<'p> Parse<'p> for Registry<'p> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Location {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub transform: Transform,
 }
@@ -726,7 +693,6 @@ impl fmt::Debug for Rgb {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Player {
-    #[doc(hidden)]
     pub z_i32_3: [i32; 3],
     pub z_f32: [f32; 7],
     pub transform: Transform,
@@ -734,7 +700,6 @@ pub struct Player {
     pub pitch: f32,
     pub velocity: [f32; 3],
     pub health: f32,
-    #[doc(hidden)]
     pub z_f32_2: [f32; 2],
 }
 
@@ -843,7 +808,6 @@ pub enum ScriptSoundKind {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Screen<'a> {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub transform: Transform,
     pub size: [f32; 2],
@@ -856,7 +820,6 @@ pub struct Screen<'a> {
     pub fx_chromatic_aberration: f32,
     pub fx_noise: f32,
     pub fx_glitch: f32,
-    #[doc(hidden)]
     pub z_u8_4: [u8; 4],
 }
 
@@ -995,10 +958,8 @@ impl RelativeEq for Transform {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Shape<'a> {
-    #[doc(hidden)]
     pub z_u8_start: u8,
     pub transform: Transform,
-    #[doc(hidden)]
     pub z_u8_4: [u8; 4],
     pub density: f32,
     pub strength: f32,
@@ -1006,17 +967,13 @@ pub struct Shape<'a> {
     // Texture offset?
     pub starting_world_position: [f32; 3],
     pub texture_weight: f32,
-    #[doc(hidden)]
     pub z_f32: f32,
-    #[doc(hidden)]
     pub z1_u8: u8,
-    #[doc(hidden)]
     pub z2_u8: u8,
     pub voxels: Voxels<'a>,
     pub palette: u32,
     pub voxel_scaling: f32,
     // Most commonly ff. Also common: all 00. Only two cases of: fffff00
-    #[doc(hidden)]
     pub z_i32_3: [i32; 2],
     pub z3_u8: u8,
 }
