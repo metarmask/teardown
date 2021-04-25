@@ -409,7 +409,9 @@ mod convert_material {
     }
 
     fn vox_mat_emission(vox_mat: &VoxMaterial) -> f32 {
-        vox_mat.emit.unwrap_or_default() * 10_f32.powf(vox_mat.flux.unwrap_or_default() - 1.0)
+        let emit = vox_mat.emit.unwrap_or_default();
+        assert!(emit <= 1.0);
+        emit * 10_f32.powf(vox_mat.flux.unwrap_or_default() - 1.0)
     }
 
     #[test]

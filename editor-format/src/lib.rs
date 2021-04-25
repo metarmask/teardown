@@ -687,16 +687,29 @@ impl SceneWriter<'_> {
 }
 
 fn convert_material(material: &Material) -> VoxMaterial {
-    let Rgba([r, g, b, a]) = material.rgba;
+    let Rgba([r, g, b, alpha]) = material.rgba;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let mut vox_mat =
-        VoxMaterial::new_color([r, g, b, a].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
+        VoxMaterial::new_color([r, g, b, alpha].map(|comp| (comp * 255.).clamp(0., 255.) as u8));
     vox_mat.kind = if vox_mat.rgba[3] < 255 {
-        vox_mat.alpha = Some(a);
+        vox_mat.alpha = Some(alpha);
         VoxMaterialKind::Glass
     } else if material.emission > 0.0 {
-        vox_mat.flux = Some(1.0);
-        vox_mat.emit = Some(material.emission);
+        let e = material.emission;
+        let flux = if e > 1000.0 {
+            eprintln!("emission {} too large for MagicaVoxel", e);
+            4.
+        } else if e > 100.0 {
+            4.
+        } else if e > 10.0 {
+            3.
+        } else if e > 1.0 {
+            2.
+        } else {
+            1.
+        };
+        vox_mat.flux = Some(flux);
+        vox_mat.emit = Some(e / 10_f32.powf(flux - 1.));
         VoxMaterialKind::Emit
     } else {
         #[allow(clippy::float_cmp)]
