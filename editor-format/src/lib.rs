@@ -702,11 +702,14 @@ impl SceneWriter<'_> {
         self.scene.environment.write_xml(&mut xml_writer)?;
         Self::write_boundary(&self.scene.boundary_vertices, &mut xml_writer)?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
+        let mut write_entity_context = WriteEntityContext {
+            entity_voxels,
+            palette_mappings,
+            scene: &self.scene,
+            writer: &mut xml_writer,
+        };
         for entity in entities {
-            #[rustfmt::skip]
-            write_entity_xml(
-                entity, &mut xml_writer, self.scene, None,
-                false, &entity_voxels, &palette_mappings,)?;
+            write_entity_context.write_entity_xml(entity, None, false)?;
         }
         xml_writer.write_event(Event::End(end))?;
         Ok(())
@@ -888,128 +891,131 @@ fn debug_write_entity_positions(entity: &Entity, parent: Option<&Entity>) {
     );
 }
 
-fn get_shape_name_and_xml_attrs(
-    entity: &Entity,
-    shape: &Shape,
-    palette_remappings: &[PaletteMapping],
-    entity_voxels: &HashMap<u32, Voxels>,
-) -> (&'static str, Vec<(&'static str, String)>) {
-    let mut kind_attrs = vec![
-        (
-            "texture",
-            format!("{} {}", shape.texture_tile, shape.texture_weight),
-        ),
-        ("density", shape.density.to_string()),
-        ("strength", shape.strength.to_string()),
-    ];
-    if let Some(palette_mapping) = palette_remappings.get(shape.palette as usize) {
-        kind_attrs.push((
-            "file",
-            format!(
-                "hash/{}.vox",
-                hash_n_to_str(compute_hash_n(palette_mapping.materials_as_ref()))
-            ),
-        ))
-    } else {
-        eprintln!("could not get palette mapping for {}", shape.palette);
-    }
-    if let Some(entity_voxels) = entity_voxels.get(&entity.handle) {
-        kind_attrs.push(("object", hash_n_to_str(compute_hash_n(entity_voxels))));
-    } else {
-        eprintln!("could not get entity voxels for {}", entity.handle)
-    }
-    ("vox", kind_attrs)
+struct WriteEntityContext<'a, W: Write> {
+    palette_mappings: Vec<PaletteMapping<'a>>,
+    entity_voxels: HashMap<u32, Voxels<'a>>,
+    scene: &'a Scene<'a>,
+    writer: &'a mut Writer<W>,
 }
 
-pub fn write_entity_xml<W: Write>(
-    entity: &Entity,
-    writer: &mut Writer<W>,
-    scene: &Scene,
-    parent: Option<&Entity>,
-    mut dynamic: bool,
-    entity_voxels: &HashMap<u32, Voxels>,
-    palette_remappings: &[PaletteMapping],
-) -> Result<()> {
-    // debug_write_entity_positions(entity, parent);
-    let (name, mut kind_attrs) = match &entity.kind {
-        EntityKind::Body(body) => {
-            #[rustfmt::skip]
-            // Skip the body in wheels, and write the shape inside directly
-            if matches!(parent, Some(Entity { kind: EntityKind::Wheel(_), .. })) {
-                if entity.children.len() != 1 { return Err(Error::SingleWheelChild(format!("{:?}", entity)).into()) }
-                return write_entity_xml(&entity.children[0], writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)
+impl<W: Write> WriteEntityContext<'_, W> {
+    fn get_shape_name_and_xml_attrs(
+        &self,
+        entity: &Entity,
+        shape: &Shape,
+    ) -> (&'static str, Vec<(&'static str, String)>) {
+        let mut kind_attrs = vec![
+            (
+                "texture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ),
+            ("density", shape.density.to_string()),
+            ("strength", shape.strength.to_string()),
+        ];
+        if let Some(palette_mapping) = self.palette_mappings.get(shape.palette as usize) {
+            kind_attrs.push((
+                "file",
+                format!(
+                    "hash/{}.vox",
+                    hash_n_to_str(compute_hash_n(palette_mapping.materials_as_ref()))
+                ),
+            ))
+        } else {
+            eprintln!("could not get palette mapping for {}", shape.palette);
+        }
+        if let Some(entity_voxels) = self.entity_voxels.get(&entity.handle) {
+            kind_attrs.push(("object", hash_n_to_str(compute_hash_n(entity_voxels))));
+        } else {
+            eprintln!("could not get entity voxels for {}", entity.handle)
+        }
+        ("vox", kind_attrs)
+    }
+
+    pub fn write_entity_xml(
+        &mut self,
+        entity: &Entity,
+        parent: Option<&Entity>,
+        mut dynamic: bool,
+    ) -> Result<()> {
+        // debug_write_entity_positions(entity, parent);
+        let (name, mut kind_attrs) = match &entity.kind {
+            EntityKind::Body(body) => {
+                #[rustfmt::skip]
+                // Skip the body in wheels, and write the shape inside directly
+                if matches!(parent, Some(Entity { kind: EntityKind::Wheel(_), .. })) {
+                    if entity.children.len() != 1 {
+                        return Err(Error::SingleWheelChild(format!("{:?}", entity)).into());
+                    }
+                    return self.write_entity_xml(&entity.children[0], Some(entity), dynamic);
+                }
+                dynamic = body.dynamic == 1;
+                ("body", body.to_xml_attrs())
             }
-            dynamic = body.dynamic == 1;
-            ("body", body.to_xml_attrs())
-        }
-        EntityKind::Shape(shape) => {
-            get_shape_name_and_xml_attrs(entity, shape, palette_remappings, entity_voxels)
-        }
-        EntityKind::Script(script) => ("script", script.to_xml_attrs()),
-        EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
-        EntityKind::Wheel(_) => ("wheel", vec![]),
-        EntityKind::Joint(joint) => joint_xml(joint),
-        EntityKind::Light(light) => ("light", light.to_xml_attrs()),
-        EntityKind::Location(_) => ("location", vec![]),
-        EntityKind::Screen(_) => ("screen", vec![]),
-        EntityKind::Trigger(_) => ("trigger", vec![]),
-        EntityKind::Water(water) => ("water", water.to_xml_attrs()),
-    };
-    let start = BytesStart::owned_name(name);
-    let mut attrs = Vec::new();
-    if let Some(mut world_transform) = vox_corrected_transform(Some(entity)) {
-        // If parent body is dynamic, then light is relative to shape in the save
-        // representation
-        if let Some(parent_transform) = vox_corrected_transform(parent) {
-            #[rustfmt::skip]
-            let parent_is_vehicle = matches!(parent, Some(Entity { kind: EntityKind::Vehicle(_), .. }));
-            world_transform = if dynamic && !parent_is_vehicle {
-                world_transform
-            } else {
-                let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
-                let parent_isometry: Isometry3<f32> = parent_transform.into();
-                world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
-                world_transform_isometry.into()
-            };
-        }
-        attrs.append(&mut world_transform.to_xml_attrs());
-    }
-    if !entity.tags.0.is_empty() {
-        #[rustfmt::skip]
-        attrs.push(("tags",
-            join_as_strings(entity.tags.0.iter()
-                .map(|(&k, &v)| {
-                    if v.is_empty() { k.into() } else { format!("{}={}", k, v) }}))));
-    }
-    if !entity.desc.is_empty() {
-        attrs.push(("desc", entity.desc.to_owned()));
-    }
-    attrs.push(("name", entity.handle.to_string()));
-    attrs.append(&mut kind_attrs);
-    let start = start.with_attributes(attrs.iter().map(|(k, v)| (*k, v.as_ref())));
-    let end = start.to_end().into_owned();
-    writer.write_event(Event::Start(start))?;
-    for child in &entity.children {
-        #[rustfmt::skip]
-        write_entity_xml(child, writer, scene, Some(entity), dynamic, entity_voxels, palette_remappings)?;
-    }
-    match &entity.kind {
-        EntityKind::Water(water) => {
-            water.boundary_vertices.as_slice().write_xml(writer)?;
-        }
-        #[rustfmt::skip]
-        EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
-            for pos in [knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to)].iter().flatten() {
-                writer.write_event(Event::Empty(
-                    BytesStart::owned_name("location")
-                        .with_attributes(vec![("pos", join_as_strings(pos.iter()).as_ref())]),
-                ))?;
+            EntityKind::Shape(shape) => self.get_shape_name_and_xml_attrs(entity, shape),
+            EntityKind::Script(script) => ("script", script.to_xml_attrs()),
+            EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
+            EntityKind::Wheel(_) => ("wheel", vec![]),
+            EntityKind::Joint(joint) => joint_xml(joint),
+            EntityKind::Light(light) => ("light", light.to_xml_attrs()),
+            EntityKind::Location(_) => ("location", vec![]),
+            EntityKind::Screen(_) => ("screen", vec![]),
+            EntityKind::Trigger(_) => ("trigger", vec![]),
+            EntityKind::Water(water) => ("water", water.to_xml_attrs()),
+        };
+        let start = BytesStart::owned_name(name);
+        let mut attrs = Vec::new();
+        if let Some(mut world_transform) = vox_corrected_transform(Some(entity)) {
+            // If parent body is dynamic, then light is relative to shape in the save
+            // representation
+            if let Some(parent_transform) = vox_corrected_transform(parent) {
+                #[rustfmt::skip]
+                let parent_is_vehicle = matches!(parent, Some(Entity { kind: EntityKind::Vehicle(_), .. }));
+                world_transform = if dynamic && !parent_is_vehicle {
+                    world_transform
+                } else {
+                    let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
+                    let parent_isometry: Isometry3<f32> = parent_transform.into();
+                    world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
+                    world_transform_isometry.into()
+                };
             }
-        },
-        _ => {}
+            attrs.append(&mut world_transform.to_xml_attrs());
+        }
+        if !entity.tags.0.is_empty() {
+            #[rustfmt::skip]
+            attrs.push(("tags",
+                join_as_strings(entity.tags.0.iter().map(|(&k, &v)| {
+                    if v.is_empty() { k.into() } else { format!("{}={}", k, v) } })), ));
+        }
+        if !entity.desc.is_empty() {
+            attrs.push(("desc", entity.desc.to_owned()));
+        }
+        attrs.push(("name", entity.handle.to_string()));
+        attrs.append(&mut kind_attrs);
+        let start = start.with_attributes(attrs.iter().map(|(k, v)| (*k, v.as_ref())));
+        let end = start.to_end().into_owned();
+        self.writer.write_event(Event::Start(start))?;
+        for child in &entity.children {
+            self.write_entity_xml(child, Some(entity), dynamic)?;
+        }
+        match &entity.kind {
+            EntityKind::Water(water) => {
+                water.boundary_vertices.as_slice().write_xml(self.writer)?;
+            }
+            #[rustfmt::skip]
+            EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
+                for pos in [knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to),].iter().flatten() {
+                    self.writer.write_event(Event::Empty(
+                        BytesStart::owned_name("location")
+                            .with_attributes(vec![("pos", join_as_strings(pos.iter()).as_ref())]),
+                    ))?;
+                }
+            },
+            _ => {}
+        }
+        self.writer.write_event(Event::End(end))?;
+        Ok(())
     }
-    writer.write_event(Event::End(end))?;
-    Ok(())
 }
 fn transform_shape(transform: &Transform, size_i: [u32; 3]) -> Transform {
     let (mut pos, mut rot) = transform.as_nalegbra_pair();
