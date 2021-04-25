@@ -248,7 +248,8 @@ impl<'a> ImportContext<'a> {
                     println!("Weird thing: {:?}", entity);
                 }
                 if let Some(mesh) = meshes.remove(&entity.handle) {
-                    if mesh.polygon_material_index.as_ref().unwrap().len() > 100 {
+                    let n_quads = mesh.polygon_material_index.as_ref().map(Vec::len);
+                    if n_quads.unwrap_or_default() > 100 {
                         let dict = PyDict::new(self.py);
                         dict.set_item("view_layer", self.view_layer)?;
                         mesh_obj.call_method("hide_set", (false,), Some(dict))?;

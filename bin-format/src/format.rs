@@ -221,6 +221,7 @@ impl<'a> Iterator for SelfAndChildrenIter<'a> {
                     self.entity.children.get(self.child_i).and_then(|child| {
                         self.child_i += 1;
                         self.child_children = Some(Box::new(child.self_and_all_children()));
+                        #[allow(clippy::unwrap_used)]
                         self.child_children.as_mut().unwrap().next()
                     })
                 })
@@ -1088,6 +1089,8 @@ where I: PrimInt + std::ops::AddAssign
 impl<I> BoxIter<I>
 where I: PrimInt
 {
+    /// # Panics
+    /// Panics if `order` is not the set {0, 1, 2}
     pub fn new(size: [I; 3], order: [usize; 3]) -> BoxIter<I> {
         assert_eq!(
             order.iter().copied().collect::<HashSet<_>>(),

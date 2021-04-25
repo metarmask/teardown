@@ -220,7 +220,7 @@ mod palette {
 
     #[test]
     fn preserve_original() {
-        let mut materials: [Material; 256] = vec![Material::default(); 256].try_into().unwrap();
+        let mut materials: [Material; 256] = vec![Material::default(); 256].into_fixed();
         materials[4] = Material {
             replacable: false,
             kind: MaterialKind::Glass,
@@ -234,7 +234,7 @@ mod palette {
 
     #[test]
     fn remap_non_replacable() {
-        let mut materials: [Material; 256] = vec![Material::default(); 256].try_into().unwrap();
+        let mut materials: [Material; 256] = vec![Material::default(); 256].into_fixed();
         let kind = MaterialKind::Dirt;
         materials[4] = Material {
             replacable: false,
@@ -252,7 +252,7 @@ mod palette {
 
     #[test]
     fn replace_replacables() {
-        let mut materials: [Material; 256] = vec![Material::default(); 256].try_into().unwrap();
+        let mut materials: [Material; 256] = vec![Material::default(); 256].into_fixed();
         #[allow(clippy::needless_range_loop)]
         for i in 169..=176 {
             materials[i] = Material {
@@ -276,7 +276,7 @@ mod palette {
 
     #[test]
     fn keep_brake_light_index() {
-        let mut materials: [Material; 256] = vec![Material::default(); 256].try_into().unwrap();
+        let mut materials: [Material; 256] = vec![Material::default(); 256].into_fixed();
         materials[6] = Material {
             replacable: false,
             kind: MaterialKind::Glass,

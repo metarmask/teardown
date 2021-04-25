@@ -30,6 +30,12 @@ enum Error {
     NoHomeDir,
     #[error("Unexpected type/value when reading a Valve KeyValues file (sometimes .vdf)")]
     UnexpectedVDF,
+    #[error("Could not build the scene writer: {0}")]
+    SceneWriterBuild(String),
+    #[error("Could not initialize iced GUI")]
+    IcedInit(String),
+    #[error("No Steam install directory")]
+    NoSteamInstallDir,
 }
 
 #[derive(StructOpt)]
@@ -78,14 +84,20 @@ struct Options {
 fn level_name_from_path<P: AsRef<Path>>(path: P) -> String {
     let mut path = path.as_ref().to_owned();
     path.set_extension("");
-    path.file_name().unwrap().to_string_lossy().to_string()
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[allow(clippy::too_many_lines)]
+fn main() -> Result<()> {
     let args = Options::from_args();
     #[rustfmt::skip]
     let command = if let Some(command) = args.command { command } else {
-        graphical::App::run(Settings::default())?; return Ok(()); };
+        graphical::App::run(Settings::default()).map_err(|iced_error| {
+            Error::IcedInit(format!("{:#}", iced_error))
+        })?; return Ok(()); };
     match command {
         Subcommand::ShowVox { vox_file } => {
             let semantic = vox::syntax::parse_file(vox_file);
@@ -97,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let data_folder = teardown_folder.join("data");
             let mut created_mods = HashSet::new();
-            let vox_store = VoxStore::new(teardown_folder).unwrap();
+            let vox_store = VoxStore::new(teardown_folder)?;
             for file in fs::read_dir(data_folder.join("bin"))? {
                 let file = file?;
                 println!("Reading {}", file.file_name().to_string_lossy());
@@ -110,22 +122,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 level_path.set_extension("");
                 // Example: lee
-                let level_name = level_path.file_name().unwrap();
+                let level_name = level_path
+                    .file_name()
+                    .map_or_else(|| "what".into(), ToOwned::to_owned);
                 // Example: lee_tower
                 let &level_id = registry
                     .get("game.levelid")
                     .expect("levels should have game.levelid registry entry");
                 #[rustfmt::skip] if level_id.is_empty() { continue; }
-                let mod_dir = mods_folder.join(level_name);
-                #[rustfmt::skip] if !created_mods.insert(level_name.to_owned()) { continue; }
+                let mod_dir = mods_folder.join(&level_name);
+                #[rustfmt::skip] if !created_mods.insert(level_name) { continue; }
                 SceneWriterBuilder::default()
                     .vox_store(vox_store.clone())
                     .mod_dir(mod_dir)
                     .scene(&scene)
                     .build()
-                    .unwrap()
-                    .write_scene()
-                    .unwrap();
+                    .map_err(Error::SceneWriterBuild)?
+                    .write_scene()?;
             }
             for mod_ in &created_mods {
                 fs::write(mods_folder.join(mod_).join("main.xml"), "")?;
@@ -140,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Subcommand::Load { then, bin_select } => {
-            let dirs = find_teardown_dirs().unwrap();
+            let dirs = find_teardown_dirs()?;
             let scene = parse_file(match bin_select {
                 BinSelect {
                     path: Some(file), ..
@@ -149,15 +162,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     name: Some(name), ..
                 } => {
                     #[rustfmt::skip]
-                    let level_paths = fs::read_dir(dirs.main.join("data").join("bin")).unwrap()
+                    let level_paths = fs::read_dir(dirs.main.join("data").join("bin"))?
                         .map(|res| {
                             res.map(|dir_entry| {
                                 let path = dir_entry.path();
                                 (level_name_from_path(&path), path)})})
-                        .collect::<Result<Vec<_>, _>>().unwrap();
+                        .collect::<Result<Vec<_>, _>>()?;
                     #[rustfmt::skip]
                     level_paths.into_iter()
-                        .find(|(other_name, _)| name == other_name.as_ref()).expect("no level with that name")
+                        .find(|(other_name, _)| name == other_name.as_ref()).context("No level with that name")?
                         .1
                 }
                 _ => dirs.progress.join("quicksave.bin"),
@@ -169,12 +182,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } => {
                     #[rustfmt::skip]
                         SceneWriterBuilder::default()
-                            .vox_store(VoxStore::new(dirs.main).unwrap())
+                            .vox_store(VoxStore::new(dirs.main)?)
                             .mod_dir(dirs.mods.join(mod_name))
                             .name(level_name)
                             .scene(&scene)
-                            .build().unwrap()
-                            .write_scene().unwrap();
+                            .build().map_err(Error::SceneWriterBuild)?
+                            .write_scene()?;
                 }
                 AfterLoadCmd::PrintEnv => {
                     println!("{:#?}", scene.environment);
@@ -249,7 +262,7 @@ fn get_steam_library_dirs() -> Result<Vec<PathBuf>> {
     let extras = get_extra_library_dirs(&main_dir)
         .context("Could not get extra library folders")
         .unwrap_or_else(|err| {
-            eprintln!("{}", err);
+            eprintln!("{:#}", err);
             Vec::new()
         });
     Ok(iter::once(main_dir).chain(extras).collect())
@@ -278,10 +291,10 @@ impl SteamApp {
         None
     }
 
-    fn install_dir(&self) -> PathBuf {
+    fn install_dir(&self) -> Option<PathBuf> {
         #[rustfmt::skip]
-        self.library_path.join("steamapps").join("common")
-            .join(&self.manifest.get("installdir").unwrap().as_str().unwrap())
+        Some(self.library_path.join("steamapps").join("common")
+            .join(&self.manifest.get("installdir")?.as_str()?))
     }
 
     fn user_dir(&self) -> PathBuf {
@@ -332,6 +345,6 @@ fn find_teardown_dirs() -> Result<Directories> {
             .join("Local Settings")
             .join("Application Data")
             .join("Teardown"),
-        main: steam_app.install_dir(),
+        main: steam_app.install_dir().ok_or(Error::NoSteamInstallDir)?,
     })
 }

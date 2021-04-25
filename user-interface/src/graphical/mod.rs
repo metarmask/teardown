@@ -9,18 +9,19 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use anyhow::Result;
 use iced::{
     button, executor, scrollable, Align, Application, Button, Column, Command, Element, Length,
     Row, Rule, Scrollable, Space, Text, VerticalAlignment,
 };
 use owning_ref::OwningHandle;
 use teardown_bin_format::{parse_file, OwnedScene, Scene};
-use teardown_editor_format::{SceneWriterBuilder, VoxStore};
+use teardown_editor_format::{SceneWriterBuilder, UnwrapLock, VoxStore};
 
 use self::alphanum_ord::AlphanumericOrd;
-use crate::{find_teardown_dirs, Directories};
+use crate::{find_teardown_dirs, Directories, Error};
 
-pub struct App {
+pub struct MainView {
     dirs: Directories,
     levels: Vec<Level>,
     n_special_levels: usize,
@@ -45,8 +46,20 @@ struct Level {
 }
 
 struct LevelViews<'a> {
-    button: Button<'a, <App as Application>::Message>,
+    button: Button<'a, MainMessage>,
     side: Option<Element<'a, LevelMessage>>,
+}
+
+fn write_scene_and_vox(
+    scene_writer_builder: &SceneWriterBuilder,
+    vox_store: &Arc<Mutex<VoxStore>>,
+) -> Result<()> {
+    scene_writer_builder
+        .build()
+        .map_err(Error::SceneWriterBuild)?
+        .write_scene()?;
+    vox_store.unwrap_lock().write_dirty()?;
+    Ok(())
 }
 
 impl Level {
@@ -63,7 +76,8 @@ impl Level {
     fn name(&self) -> String {
         let mut path = self.path.clone();
         path.set_extension("");
-        path.file_name().unwrap().to_string_lossy().to_string()
+        let file_name = path.file_name().unwrap_or_default();
+        file_name.to_string_lossy().to_string()
     }
 
     #[rustfmt::skip]
@@ -123,20 +137,17 @@ impl Level {
                     let vox_store = vox_store.clone();
                     return Command::perform(
                         async move {
-                            let dirs = dirs;
-                            let scene = scene;
-                            SceneWriterBuilder::default()
+                            let mut builder = SceneWriterBuilder::default();
+                            builder
                                 .vox_store(vox_store.clone())
                                 .mod_dir(dirs.mods.join("converted"))
-                                .scene(&scene)
-                                .build()
-                                .unwrap()
-                                .write_scene()
-                                .unwrap();
-                            vox_store.lock().unwrap().write_dirty().unwrap();
-                            scene
+                                .scene(&scene);
+                            write_scene_and_vox(&builder, &vox_store).map(|_| scene)
                         },
-                        |scene| LevelMessage::XMLConverted(Arc::new(scene)),
+                        |scene_result| match scene_result {
+                            Ok(scene) => LevelMessage::XMLConverted(Arc::new(scene)),
+                            Err(err) => LevelMessage::Error(Arc::new(err)),
+                        },
                     );
                 }
                 other => self.scene = other,
@@ -155,6 +166,9 @@ impl Level {
                     panic!("Arc::try_unwrap")
                 })
             }
+            LevelMessage::Error(error) => {
+                panic!("{:?}", error)
+            }
         }
 
         Command::none()
@@ -167,7 +181,7 @@ impl Level {
             let path = self.path.clone();
             self.scene = Load::Loading;
             Command::perform(async { parse_file(path) }, |w| {
-                LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| err.to_string())))
+                LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| format!("{:#}", err))))
             })
         } else {
             Command::none()
@@ -180,99 +194,99 @@ pub enum LevelMessage {
     ConvertXML,
     SceneLoaded(Arc<Result<OwnedScene, String>>),
     XMLConverted(Arc<OwnedScene>),
+    Error(Arc<anyhow::Error>),
 }
 
 #[derive(Clone)]
-pub enum Message {
+pub enum MainMessage {
     Level(usize, LevelMessage),
     SelectLevel(usize),
-    // LoadError(String),
     Help,
     HelpQuit,
+    Error(Arc<anyhow::Error>),
 }
 
-impl Debug for Message {
+impl Debug for MainMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("hi")
     }
 }
 
-impl Application for App {
-    type Message = Message;
-    type Executor = executor::Default;
-    type Flags = ();
+fn init_levels(dirs: &Directories) -> Result<Vec<Level>> {
+    let mut levels = fs::read_dir(dirs.main.join("data").join("bin"))?
+        .map(|res| res.map(|dir_entry| Level::new(dir_entry.path())))
+        .collect::<Result<Vec<_>, _>>()?;
+    levels.sort_by_cached_key(|x| AlphanumericOrd(x.name()));
+    levels.insert(0, Level::new(dirs.progress.join("quicksave.bin")));
+    Ok(levels)
+}
 
-    fn new(_flags: ()) -> (Self, Command<Self::Message>) {
-        let dirs = find_teardown_dirs().unwrap();
-        let mut levels = fs::read_dir(dirs.main.join("data").join("bin"))
-            .unwrap()
-            .map(|res| res.map(|dir_entry| Level::new(dir_entry.path())))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        levels.sort_by_cached_key(|x| AlphanumericOrd(x.name()));
-        levels.insert(0, Level::new(dirs.progress.join("quicksave.bin")));
-        (
-            App {
-                // levels: levels.into_iter().map(|level| ByAddress(Arc::new(level))).collect(),
-                levels,
-                n_special_levels: 1,
-                selected_level: None,
-                vox_store: VoxStore::new(&dirs.main).unwrap(),
-                dirs,
-                button_help: Default::default(),
-                scroll_state: Default::default(),
-            },
-            Command::none(),
-        )
+impl MainView {
+    fn new() -> Result<Self> {
+        let dirs = find_teardown_dirs()?;
+        let levels = init_levels(&dirs)?;
+        let vox_store = VoxStore::new(&dirs.main)?;
+        Ok(MainView {
+            levels,
+            n_special_levels: 1,
+            selected_level: None,
+            vox_store,
+            dirs,
+            button_help: Default::default(),
+            scroll_state: Default::default(),
+        })
     }
 
-    fn title(&self) -> String {
-        "Parse and convert the binary format for Teardown".to_string()
-    }
-
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+    fn update(&mut self, message: MainMessage) -> Command<MainMessage> {
         match message {
-            Message::Level(level, message) => self
+            MainMessage::Level(level, message) => self
                 .levels
                 .get_mut(level)
                 .expect("no level")
                 .update(&self.dirs, &self.vox_store, message)
-                .map(move |what| Message::Level(level, what)),
-            Message::SelectLevel(level) => {
+                .map(move |what| MainMessage::Level(level, what)),
+            MainMessage::SelectLevel(level) => {
                 let already_selected = self.selected_level == Some(level);
                 self.selected_level = Some(level);
                 self.levels
                     .get_mut(level)
                     .unwrap()
                     .load_scene(already_selected)
-                    .map(move |what| Message::Level(level, what))
+                    .map(move |what| MainMessage::Level(level, what))
             }
             // Message::LoadError(err) => {
             //     eprintln!("Load error: {:?}", err);
             //     Command::none()
             // }
-            Message::Help => Command::perform(
-                async move { open::that("https://github.com/metarmask/teardown").unwrap() },
-                |_| Message::HelpQuit,
+            MainMessage::Help => Command::perform(
+                async move { open::that("https://github.com/metarmask/teardown") },
+                |result| {
+                    if let Err(err) = result {
+                        MainMessage::Error(Arc::new(err.into()))
+                    } else {
+                        MainMessage::HelpQuit
+                    }
+                },
             ),
-            Message::HelpQuit => Command::none(),
+            MainMessage::HelpQuit => Command::none(),
+            MainMessage::Error(_) => unreachable!("caught by App"),
         }
     }
 
     #[rustfmt::skip]
-    fn view(&mut self) -> Element<'_, Self::Message> {
+    fn view(&mut self) -> Element<'_, MainMessage> {
         let selected_level = self.selected_level;
         let (level_buttons, mut level_side_views) = self.levels.iter_mut().enumerate().map(|(i, level)| {
             let mut view = level.view(selected_level == Some(i));
-            view.button = view.button.on_press(Message::SelectLevel(i));
+            view.button = view.button.on_press(MainMessage::SelectLevel(i));
             (view.button, view.side)
         }).unzip::<_, _, Vec<_>, Vec<_>>();
         Column::with_children(vec![
             Row::with_children(vec![
-                Text::new(format!("{} palette files cached", self.vox_store.lock().unwrap().palette_files.len())).into(),
+                Text::new(format!("{} palette files cached", self.vox_store.unwrap_lock().palette_files.len())).into(),
                 Space::with_width(Length::Fill).into(),
                 Button::new(&mut self.button_help, Text::new("Help"))
-                .on_press(Message::Help)
+                .on_press(MainMessage::Help)
                 .into()
             ])
             .padding(20)
@@ -293,9 +307,11 @@ impl Application for App {
                 })
                 .width(Length::FillPortion(1)).into(),
                 Column::with_children(if let Some(selected) = self.selected_level {
-                    vec![
-                        level_side_views.remove(selected).unwrap()
-                        .map(move |level_message| Message::Level(selected, level_message))]
+                    if let Some(level_side_view) = level_side_views.remove(selected) {
+                        vec![level_side_view.map(move |level_message| MainMessage::Level(selected, level_message))]
+                    } else {
+                        vec![]
+                    }
                 } else {
                     vec![]
                 })
@@ -303,5 +319,60 @@ impl Application for App {
             ]).into()
         ])
         .into()
+    }
+}
+
+pub enum App {
+    Main(MainView),
+    Error(String),
+}
+
+#[derive(Debug)]
+pub enum AppMessage {
+    Main(MainMessage),
+}
+
+impl Application for App {
+    type Message = AppMessage;
+    type Executor = executor::Default;
+    type Flags = ();
+
+    fn new(_flags: ()) -> (Self, Command<Self::Message>) {
+        (
+            match MainView::new() {
+                Ok(main) => App::Main(main),
+                Err(err) => App::Error(format!("{:#}", err)),
+            },
+            Command::none(),
+        )
+    }
+
+    fn title(&self) -> String {
+        "Parse and convert the binary format for Teardown".to_string()
+    }
+
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+        match message {
+            AppMessage::Main(main_message) => match self {
+                App::Main(main_view) => match main_message {
+                    MainMessage::Error(error) => {
+                        *self = App::Error(format!("{:#}", error));
+                        Command::none()
+                    }
+                    other => main_view.update(other).map(AppMessage::Main),
+                },
+                App::Error(ref mut error) => {
+                    *error += "\nMainView could not receive a message because of the current error";
+                    Command::none()
+                }
+            },
+        }
+    }
+
+    fn view(&mut self) -> Element<'_, Self::Message> {
+        match self {
+            App::Main(main_view) => main_view.view().map(AppMessage::Main),
+            App::Error(error) => Text::new(error.clone()).into(),
+        }
     }
 }

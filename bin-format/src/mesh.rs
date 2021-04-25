@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, fmt::Debug};
 
 use building_blocks::{
     core::prelude::*,
@@ -26,7 +26,7 @@ impl<'a> Shape<'a> {
         let is_glass = match palettes.get(self.palette as usize) {
             Some(palette) => palette.materials.iter()
                 .map(|material| material.rgba.0[3] < 1.0)
-                .collect::<Vec<_>>().try_into().unwrap(),
+                .collect::<Vec<_>>().into_fixed(),
             None => [false; 256],
         };
         for (coord, palette_index) in self.iter_voxels() {
@@ -56,5 +56,21 @@ impl IsEmpty for PaletteIndex {
 impl IsOpaque for PaletteIndex {
     fn is_opaque(&self) -> bool {
         !self.1
+    }
+}
+
+// Duplicate in editor-format
+trait IntoFixedArray {
+    type Item;
+
+    fn into_fixed<const N: usize>(self) -> [Self::Item; N];
+}
+
+impl<T: Debug> IntoFixedArray for Vec<T> {
+    type Item = T;
+
+    fn into_fixed<const N: usize>(self) -> [Self::Item; N] {
+        #[allow(clippy::unwrap_used)]
+        self.try_into().unwrap()
     }
 }

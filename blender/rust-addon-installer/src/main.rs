@@ -1,4 +1,5 @@
 #![feature(proc_macro_hygiene)]
+#![allow(clippy::unwrap_used)]
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::{ffi::OsString, io, path::PathBuf};

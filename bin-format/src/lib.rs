@@ -1,19 +1,27 @@
 #![feature(array_map, array_chunks, bool_to_option)]
 use std::{
-    error::Error,
+    error::Error as StdError,
     fs::File,
     io::{self, Cursor, Read},
     path::Path,
 };
 
+use anyhow::Result;
 use flate2::read::ZlibDecoder;
 use owning_ref::OwningHandle;
 use structr::{get_end_path, write_debug_json, Parse, ParseError, Parser};
+use thiserror::Error;
 
 mod format;
 #[cfg(feature = "mesh")]
 mod mesh;
 pub use format::*;
+
+#[derive(Debug, Error)]
+enum Error {
+    #[error(".vox error")]
+    IO(#[from] io::Error),
+}
 
 fn read_bytes<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Error> {
     let mut file = File::open(path)?;
@@ -42,7 +50,7 @@ pub fn parse_uncompressed(bytes: &[u8]) -> Result<Scene<'_>, ParseError<'_>> {
 
 pub type OwnedScene = OwningHandle<Vec<u8>, Box<Scene<'static>>>;
 
-pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwnedScene, Box<dyn std::error::Error>> {
+pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwnedScene> {
     let uncompressed = read_to_uncompressed(path)?;
     OwningHandle::try_new(uncompressed, |uncompressed_ref| {
         // Safety: I have no idea.
@@ -50,7 +58,7 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwnedScene, Box<dyn std::er
     })
 }
 
-pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Error>> {
+pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn StdError>> {
     let uncompressed = read_to_uncompressed(path)?;
     let mut parser = Parser::new(&uncompressed);
     let _scene = match Scene::parse(&mut parser) {
@@ -65,18 +73,13 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Err
                 print!(".{}", element);
             }
             println!();
-            Err(err).unwrap()
+            Err(err).map_err(|err| format!("{:?}", err))?
         }
     };
     if debug {
         write_debug_json(&parser.context)?;
     }
     Ok(())
-}
-
-#[test]
-fn test_one() {
-    test_file("../example-input/quicksave.bin", true).unwrap();
 }
 
 #[derive(Clone, Copy)]
