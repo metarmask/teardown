@@ -33,7 +33,7 @@ enum Error {
     UnexpectedVDF,
     #[error("Could not build the scene writer: {0}")]
     SceneWriterBuild(String),
-    #[error("Could not initialize iced GUI")]
+    #[error("Could not initialize iced GUI: {0}")]
     IcedInit(String),
     #[error("No Steam install directory")]
     NoSteamInstallDir,
