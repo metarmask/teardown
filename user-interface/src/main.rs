@@ -9,6 +9,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use clap::ArgGroup;
 use iced::{Application, Settings};
 use steamy_vdf as vdf;
 use structopt::StructOpt;
@@ -68,11 +69,14 @@ enum Subcommand {
 }
 
 #[derive(Default, StructOpt)]
+#[structopt(group(ArgGroup::with_name("bin-select").args(&["path", "name", "quicksave"]).required(true)))]
 struct BinSelect {
-    #[structopt(long)]
+    #[structopt(long, short = "i")]
     path: Option<PathBuf>,
-    #[structopt(long)]
+    #[structopt(long, short)]
     name: Option<String>,
+    #[structopt(long, short)]
+    quicksave: bool,
 }
 
 #[derive(StructOpt)]
@@ -173,7 +177,10 @@ fn main() -> Result<()> {
                         .find(|(other_name, _)| name == other_name.as_ref()).context("No level with that name")?
                         .1
                 }
-                _ => dirs.progress.join("quicksave.bin"),
+                BinSelect {
+                    quicksave: true, ..
+                } => dirs.progress.join("quicksave.bin"),
+                _ => unreachable!("because of arg group"),
             })?;
             match then {
                 AfterLoadCmd::Convert {
