@@ -12,13 +12,14 @@ use std::{
     hash::{Hash, Hasher},
     io::{ErrorKind, Write},
     iter,
+    ops::{Mul, MulAssign},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
 
 use anyhow::{bail, Result};
 use derive_builder::Builder;
-use nalgebra::{Isometry3, UnitQuaternion, Vector3};
+use nalgebra::{Isometry3, Point3, Translation3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{
     events::{BytesStart, Event},
@@ -849,23 +850,6 @@ impl ToXMLAttributes for Body {
     }
 }
 
-fn joint_xml(joint: &Joint) -> (&'static str, Vec<(&'static str, String)>) {
-    if joint.kind == JointKind::Rope {
-        ("rope", vec![])
-    } else {
-        ("joint", vec![(
-            "type",
-            match joint.kind {
-                JointKind::Ball => "ball",
-                JointKind::Hinge => "hinge",
-                JointKind::Prismatic => "prismatic",
-                JointKind::Rope => unreachable!(),
-            }
-            .to_string(),
-        )])
-    }
-}
-
 #[allow(dead_code)]
 fn debug_write_entity_positions(entity: &Entity, parent: Option<&Entity>) {
     println!(
@@ -899,6 +883,39 @@ struct WriteEntityContext<'a, W: Write> {
 }
 
 impl<W: Write> WriteEntityContext<'_, W> {
+    fn joint_xml(&self, joint: &Joint) -> (&'static str, Vec<(&'static str, String)>) {
+        if joint.kind == JointKind::Rope {
+            ("rope", vec![])
+        } else {
+            let shape_handle = joint.shape_handles[0];
+            let relative_pos = joint.shape_positions[0];
+            let mut attrs = vec![(
+                "type",
+                match joint.kind {
+                    JointKind::Ball => "ball",
+                    JointKind::Hinge => "hinge",
+                    JointKind::Prismatic => "prismatic",
+                    JointKind::Rope => unreachable!(),
+                }
+                .to_string(),
+            )];
+            // FIXME: Inefficient
+            if let Some(shape) = self.scene.iter_entities().find(|e| {
+                matches!(e.kind, EntityKind::Body(_))
+                    && e.children.iter().any(|child| child.handle == shape_handle)
+            }) {
+                let mut isometry: Isometry3<f32> = shape.transform().unwrap().clone().into();
+                let point = isometry.transform_point(&Point3::new(
+                    relative_pos[0],
+                    relative_pos[1],
+                    relative_pos[2],
+                ));
+                attrs.push(("pos", join_as_strings(point.coords.iter())))
+            }
+            ("joint", attrs)
+        }
+    }
+
     fn get_shape_name_and_xml_attrs(
         &self,
         entity: &Entity,
@@ -955,7 +972,7 @@ impl<W: Write> WriteEntityContext<'_, W> {
             EntityKind::Script(script) => ("script", script.to_xml_attrs()),
             EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
             EntityKind::Wheel(_) => ("wheel", vec![]),
-            EntityKind::Joint(joint) => joint_xml(joint),
+            EntityKind::Joint(joint) => self.joint_xml(joint),
             EntityKind::Light(light) => ("light", light.to_xml_attrs()),
             EntityKind::Location(_) => ("location", vec![]),
             EntityKind::Screen(_) => ("screen", vec![]),
