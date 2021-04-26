@@ -764,6 +764,7 @@ fn convert_material(material: &Material) -> VoxMaterial {
         vox_mat.metal = Some(material.metalness);
         vox_mat.rough = Some(1.0 - material.shinyness);
         vox_mat.spec = Some(material.reflectivity);
+        vox_mat.weight = Some(1.0);
         VoxMaterialKind::Metal
     };
     vox_mat
