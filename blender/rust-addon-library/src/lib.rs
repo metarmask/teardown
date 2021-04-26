@@ -379,9 +379,9 @@ impl<'a> ImportContext<'a> {
             let blender_mat = self.material_template.call_method0("copy")?;
             blender_mat.setattr("name", format!("{:?}:{:02}", material.kind, hash))?;
             let sliders = blender_mat.getattr("node_tree")?.getattr("nodes")?.get_item(0)?.getattr("inputs")?;
-            let Material { rgba: Rgba([r, g, b, alpha]), shinyness, metalness, reflectivity, emission, .. } = material;
+            let Material { rgba: Rgba([r, g, b, alpha]), reflectivity, shinyness, metalness, emission, .. } = material;
             sliders.get_item(0)?.setattr("default_value", (r, g, b, 1.0))?;
-            for (i, value) in [alpha, shinyness, metalness, reflectivity, emission].iter().enumerate() {
+            for (i, value) in [alpha, reflectivity, shinyness, metalness, emission].iter().enumerate() {
                 sliders.get_item(i + 1)?.setattr("default_value", **value)?;
             }
             self.hash_material_map.insert(hash, blender_mat);

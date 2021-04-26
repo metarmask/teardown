@@ -756,14 +756,14 @@ fn convert_material(material: &Material) -> VoxMaterial {
         VoxMaterialKind::Emit
     } else {
         #[allow(clippy::float_cmp)]
-        if material.shinyness != material.reflectivity {
+        if material.reflectivity != material.metalness {
             eprintln!(
                 "shinyness {} != reflectivity {} in {:?}",
-                material.shinyness, material.reflectivity, material
+                material.reflectivity, material.metalness, material
             )
         }
-        vox_mat.metal = Some(material.reflectivity);
-        vox_mat.rough = Some(1.0 - material.metalness);
+        vox_mat.metal = Some(material.metalness);
+        vox_mat.rough = Some(1.0 - material.shinyness);
         VoxMaterialKind::Metal
     };
     vox_mat

@@ -144,9 +144,9 @@ pub use joint::{Joint, Kind as JointKind, Knot, Rope};
 pub struct Material {
     pub kind: MaterialKind,
     pub rgba: Rgba,
+    pub reflectivity: f32,
     pub shinyness: f32,
     pub metalness: f32,
-    pub reflectivity: f32,
     pub emission: f32,
     pub replacable: bool,
 }
@@ -155,9 +155,9 @@ impl Hash for Material {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         self.rgba.hash(state);
+        self.reflectivity.to_le_bytes().hash(state);
         self.shinyness.to_le_bytes().hash(state);
         self.metalness.to_le_bytes().hash(state);
-        self.reflectivity.to_le_bytes().hash(state);
         self.emission.to_le_bytes().hash(state);
         self.replacable.hash(state);
     }
