@@ -268,7 +268,7 @@ mod palette {
         };
         if let PaletteMapping::Remapped(boxed) = remap_materials(&materials) {
             let (remapped, indices_orig_to_new) = boxed.as_ref();
-            assert_eq!(remapped[indices_orig_to_new[1] as usize].replacable, false);
+            assert!(!remapped[indices_orig_to_new[1] as usize].replacable);
         } else {
             panic!("should be remapped")
         }

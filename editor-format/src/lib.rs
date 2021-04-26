@@ -12,14 +12,13 @@ use std::{
     hash::{Hash, Hasher},
     io::{ErrorKind, Write},
     iter,
-    ops::{Mul, MulAssign},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
 
 use anyhow::{bail, Result};
 use derive_builder::Builder;
-use nalgebra::{Isometry3, Point3, Translation3, UnitQuaternion, Vector3};
+use nalgebra::{Isometry3, Point3, UnitQuaternion, Vector3};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{
     events::{BytesStart, Event},
@@ -904,13 +903,14 @@ impl<W: Write> WriteEntityContext<'_, W> {
                 matches!(e.kind, EntityKind::Body(_))
                     && e.children.iter().any(|child| child.handle == shape_handle)
             }) {
-                let mut isometry: Isometry3<f32> = shape.transform().unwrap().clone().into();
-                let point = isometry.transform_point(&Point3::new(
+                #[allow(clippy::unwrap_used)]
+                let isometry: Isometry3<f32> = shape.transform().unwrap().clone().into();
+                let pos = isometry.transform_point(&Point3::new(
                     relative_pos[0],
                     relative_pos[1],
                     relative_pos[2],
                 ));
-                attrs.push(("pos", join_as_strings(point.coords.iter())))
+                attrs.push(("pos", join_as_strings(pos.coords.iter())))
             }
             ("joint", attrs)
         }
