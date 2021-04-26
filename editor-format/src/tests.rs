@@ -299,11 +299,10 @@ mod convert_material {
 
     use super::super::*;
 
-    // alpha, shinyness, metalness, reflectivity, emission
     #[test]
-    fn s0_m100_re0_e0() {
+    fn re00_s10_m00() {
         let vox_mat = convert_material(&Material {
-            shinyness: 1.,
+            shinyness: 1.0,
             ..Material::default()
         });
         assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
@@ -312,7 +311,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s0_m50_re0_e0() {
+    fn re05_s00_m00() {
         let vox_mat = convert_material(&Material {
             shinyness: 0.5,
             ..Material::default()
@@ -323,7 +322,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s0_m0_re0_e0() {
+    fn re00_s00_m00() {
         let vox_mat = convert_material(&Material::default());
         assert_eq!(vox_mat.kind, VoxMaterialKind::Metal);
         assert_relative_eq!(vox_mat.metal.unwrap_or_default(), 0.);
@@ -331,7 +330,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s50_m100_re50_e0() {
+    fn re05_s10_m05() {
         let vox_mat = convert_material(&Material {
             reflectivity: 0.5,
             shinyness: 1.0,
@@ -344,7 +343,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s50_m50_re50_e0() {
+    fn re05_s05_m05() {
         let vox_mat = convert_material(&Material {
             reflectivity: 0.5,
             shinyness: 0.5,
@@ -357,7 +356,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s50_m0_re50_e0() {
+    fn re05_s00_m05() {
         let vox_mat = convert_material(&Material {
             reflectivity: 0.5,
             shinyness: 0.0,
@@ -370,7 +369,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s100_m100_re100_e0() {
+    fn re10_s10_m10() {
         let vox_mat = convert_material(&Material {
             reflectivity: 1.0,
             shinyness: 1.0,
@@ -383,7 +382,7 @@ mod convert_material {
     }
 
     #[test]
-    fn s100_m50_re100_e0() {
+    fn re10_s05_m10() {
         let vox_mat = convert_material(&Material {
             reflectivity: 1.0,
             shinyness: 0.5,
