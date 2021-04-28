@@ -1053,18 +1053,12 @@ impl<W: Write> WriteEntityContext<'_, W> {
 }
 fn transform_shape(transform: &Transform, size_i: [u32; 3]) -> Transform {
     let (mut pos, mut rot) = transform.as_nalegbra_pair();
-    // println!("# from_raw # pos: {:?}, rot: {:?}, size: {:?}", pos, rot, size_i);
-    pos.iter_mut().for_each(|dim| *dim *= 10.0);
-    // println!("# from # pos: {:?}, rot: {:?}, size: {:?}", pos, rot, size_i);
-
     let size = Vector3::from_iterator(size_i.iter().map(|&dim| (dim - dim % 2) as f32));
-    let axis_relative_offset = Vector3::new(0.5, 0.5, 0.0);
+    // 0.05 m = half a voxel
+    let axis_relative_offset = Vector3::new(0.05, 0.05, 0.0);
     let axis_offset = size.component_mul(&axis_relative_offset);
     pos += rot.transform_vector(&axis_offset);
     rot *= UnitQuaternion::from_axis_angle(&Vector3::x_axis(), TAU / 4.);
-
-    // println!("# into # pos: {:?}, rot: {:?}, size: {:?}", pos, rot, size_i);
-    pos.iter_mut().for_each(|dim| *dim *= 0.1);
     (pos, rot).into()
 }
 
