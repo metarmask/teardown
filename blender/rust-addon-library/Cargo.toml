@@ -16,6 +16,6 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.13", features = ["extension-module", "nightly"] }
 #pyo3-log = "0.3"
 teardown-bin-format = { path = "../../bin-format", features = ["mesh"] }
-building-blocks = { git = "https://github.com/metarmask/building-blocks" }
+building-blocks = { git = "https://github.com/metarmask/building-blocks", features = ["mesh"], default-features = false }
 rayon = "1.5"
 indicatif = { version = "0.15", features = ["rayon"] }

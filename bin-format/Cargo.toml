@@ -13,7 +13,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # optional
-building-blocks = { git = "https://github.com/metarmask/building-blocks", features = ["nalgebra"], optional = true }
+building-blocks = { git = "https://github.com/metarmask/building-blocks", features = ["nalgebra", "mesh"], default-features = false, optional = true }
 nalgebra = { version = "0.26", optional = true }
 
 [features]

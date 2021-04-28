@@ -5,7 +5,6 @@ edition = "2018"
 
 [dependencies]
 teardown-bin-format = { path = "../bin-format", features = ["convert_nalgebra"] }
-building-blocks = { git = "https://github.com/metarmask/building-blocks", features = ["nalgebra"] }
 quick-xml = { version = "0.22", features = ["serialize"] }
 nalgebra = { version = "0.26" }
 vox = { git = "https://github.com/metarmask/vox-format", rev = "1adf146" }
