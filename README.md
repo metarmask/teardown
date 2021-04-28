@@ -24,7 +24,6 @@ Use Rust Nightly. To run the graphical interface, use:
     cargo run --release --package teardown-converter
 
 ## Known issues
-* Rotation fails for shapes which are rotated on three axes.
 * Wheels are placed at the centers of vehicle bodies.
 * Specific attributes of the following entities are not added to the editor XML:
   * Wheel

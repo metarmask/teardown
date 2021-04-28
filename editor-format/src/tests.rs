@@ -5,8 +5,11 @@ mod transform_shape {
     use super::super::*;
 
     fn rot(x: f32, y: f32, z: f32) -> [f32; 4] {
-        let quat =
-            UnitQuaternion::from_euler_angles(x.to_radians(), y.to_radians(), z.to_radians());
+        let x = UnitQuaternion::from_axis_angle(&Vector3::x_axis(), x.to_radians());
+        let y = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), y.to_radians());
+        let z = UnitQuaternion::from_axis_angle(&Vector3::z_axis(), z.to_radians());
+        // YZX order
+        let quat = (y * z) * x;
         [quat.i, quat.j, quat.k, quat.w]
     }
 
