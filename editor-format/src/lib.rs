@@ -946,6 +946,9 @@ impl<W: Write> WriteEntityContext<'_, W> {
             ("density", shape.density.to_string()),
             ("strength", shape.strength.to_string()),
         ];
+        if shape.voxels.palette_index_runs.is_empty() {
+            kind_attrs.push(("hidden_", true.to_string()))
+        }
         if let Some(palette_mapping) = self.palette_mappings.get(shape.palette as usize) {
             kind_attrs.push((
                 "file",
