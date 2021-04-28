@@ -4,6 +4,7 @@ use building_blocks::{
     core::prelude::*,
     mesh::{
         greedy_quads, padded_greedy_quads_chunk_extent, GreedyQuadsBuffer, IsOpaque, MergeVoxel,
+        RIGHT_HANDED_Y_UP_CONFIG,
     },
     storage::prelude::*,
 };
@@ -12,7 +13,7 @@ use crate::{format::Shape, Palette, PaletteIndex};
 
 impl<'a> Shape<'a> {
     #[must_use]
-    pub fn to_mesh(&self, palettes: &[Palette]) -> (Array3<PaletteIndex>, GreedyQuadsBuffer) {
+    pub fn to_mesh(&self, palettes: &[Palette]) -> (Array3x1<PaletteIndex>, GreedyQuadsBuffer) {
         let size: [i32; 3] = self
             .voxels
             .size
@@ -21,7 +22,7 @@ impl<'a> Shape<'a> {
             minimum: PointN([0, 0, 0]),
             shape: PointN(size),
         });
-        let mut array = Array3::fill(extent, PaletteIndex(0, false));
+        let mut array = Array3x1::fill(extent, PaletteIndex(0, false));
         #[rustfmt::skip]
         let is_glass = match palettes.get(self.palette as usize) {
             Some(palette) => palette.materials.iter()
@@ -33,7 +34,7 @@ impl<'a> Shape<'a> {
             *array.get_mut(PointN(coord)) =
                 PaletteIndex(palette_index, is_glass[palette_index as usize]);
         }
-        let mut buffer = GreedyQuadsBuffer::new(extent);
+        let mut buffer = GreedyQuadsBuffer::new(extent, RIGHT_HANDED_Y_UP_CONFIG.quad_groups());
         greedy_quads(&array, &extent, &mut buffer);
         (array, buffer)
     }

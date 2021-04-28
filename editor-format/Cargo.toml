@@ -5,13 +5,13 @@ edition = "2018"
 
 [dependencies]
 teardown-bin-format = { path = "../bin-format", features = ["convert_nalgebra"] }
-building-blocks = { version = "0.5", features = ["nalgebra"] }
+building-blocks = { git = "https://github.com/metarmask/building-blocks", features = ["nalgebra"] }
 quick-xml = { version = "0.22", features = ["serialize"] }
-nalgebra = { version = "0.25" }
+nalgebra = { version = "0.26" }
 vox = { git = "https://github.com/metarmask/vox-format", rev = "1adf146" }
 #vox = { path = "../../rust-vox" }
 approx = "0.4"
-derive_builder = "0.9"
+derive_builder = "0.10"
 rayon = "1.5"
 base64 = "0.13"
 anyhow = "1.0"

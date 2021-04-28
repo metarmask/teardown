@@ -5,4 +5,4 @@ edition = "2018"
 
 [dependencies]
 structopt = "0.3"
-command-macros = { version = "0.2.7", features = ["nightly"] }
+command-macros = { version = "0.2", features = ["nightly"] }

@@ -9,12 +9,12 @@ flate2 = { version = "1.0", features = ["zlib"], default-features = false }
 num-traits = "0.2"
 owning_ref = "0.4"
 approx = "0.4"
-
-# optional
-building-blocks = { version = "0.5", features = ["nalgebra"], optional = true }
-nalgebra = { version = "0.25", optional = true }
 anyhow = "1.0"
 thiserror = "1.0"
+
+# optional
+building-blocks = { git = "https://github.com/metarmask/building-blocks", features = ["nalgebra"], optional = true }
+nalgebra = { version = "0.26", optional = true }
 
 [features]
 default = []

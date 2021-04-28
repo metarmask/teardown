@@ -11,8 +11,8 @@ use std::{
 
 use anyhow::Result;
 use iced::{
-    button, executor, scrollable, Align, Application, Button, Column, Command, Element, Length,
-    Row, Rule, Scrollable, Space, Text, VerticalAlignment,
+    button, executor, scrollable, Align, Application, Button, Clipboard, Column, Command, Element,
+    Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment,
 };
 use owning_ref::OwningHandle;
 use teardown_bin_format::{parse_file, OwnedScene, Scene};
@@ -351,7 +351,11 @@ impl Application for App {
         "Parse and convert the binary format for Teardown".to_string()
     }
 
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+    fn update(
+        &mut self,
+        message: Self::Message,
+        _clipboard: &mut Clipboard,
+    ) -> Command<Self::Message> {
         match message {
             AppMessage::Main(main_message) => match self {
                 App::Main(main_view) => match main_message {

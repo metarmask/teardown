@@ -14,7 +14,7 @@ use iced::{Application, Settings};
 use steamy_vdf as vdf;
 use structopt::StructOpt;
 use teardown_bin_format::parse_file;
-use teardown_editor_format::{SceneWriterBuilder, VoxStore};
+use teardown_editor_format::{SceneWriterBuilder, SceneWriterBuilderError, VoxStore};
 use thiserror::Error;
 use Error::UnexpectedVDF as VDFErr;
 
@@ -31,8 +31,8 @@ enum Error {
     NoHomeDir,
     #[error("Unexpected type/value when reading a Valve KeyValues file (sometimes .vdf)")]
     UnexpectedVDF,
-    #[error("Could not build the scene writer: {0}")]
-    SceneWriterBuild(String),
+    #[error("Could not build the scene writer: {:#}", 0)]
+    SceneWriterBuild(SceneWriterBuilderError),
     #[error("Could not initialize iced GUI: {0}")]
     IcedInit(String),
     #[error("No Steam install directory")]

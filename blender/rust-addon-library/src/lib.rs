@@ -5,7 +5,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use building_blocks::{core::Axis3Permutation, mesh::OrientedCubeFace, storage::access::GetMut};
+use building_blocks::{core::Axis3Permutation, mesh::OrientedCubeFace, storage::GetMut};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressIterator, ProgressStyle};
 use pyo3::{exceptions, prelude::*, types::PyDict, wrap_pyfunction};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -161,7 +161,7 @@ impl<'a> ImportContext<'a> {
                     ..
                 } = quad_group.face;
                 polygon_vert_indices.extend(
-                    if if permutation == Axis3Permutation::ZXY {
+                    if if permutation == Axis3Permutation::Zxy {
                         -1
                     } else {
                         1
