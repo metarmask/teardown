@@ -23,12 +23,13 @@ enum Error {
     #[cfg(target_os = "windows")]
     #[error("Unable to get the path to the main Steam directory from the registry")]
     SteamPathInRegistry,
+    #[cfg(not(target_os = "windows"))]
+    #[error("No home directory found")]
+    NoHomeDir,
     #[error("Steam dir not found at {0}")]
     NoMainSteamDir(PathBuf),
     #[error("Steam app {0} not found")]
     SteamAppNotFound(String),
-    #[error("No home directory found")]
-    NoHomeDir,
     #[error("Unexpected type/value when reading a Valve KeyValues file (sometimes .vdf)")]
     UnexpectedVDF,
     #[error("Could not build the scene writer: {:#}", 0)]
