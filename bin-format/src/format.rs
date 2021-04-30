@@ -13,10 +13,15 @@ use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
+const VERSION: [u8; 3] = [0, 7, 1];
+
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
     #[structr(eq = "Scene::MAGIC")]
     magic: [u8; 5],
+    #[structr(parse = "{ let v = parser.parse()?;
+            if v != VERSION {
+                println!(\"Warning. Version mismatch: {:?} != {:?}\", v, VERSION) } Ok(v) }")]
     pub version: [u8; 3],
     pub level: &'a str,
     pub z_bytes4_eq_0: [u8; 4],
