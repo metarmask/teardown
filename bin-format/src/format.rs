@@ -24,6 +24,8 @@ pub struct Scene<'a> {
     pub spawnpoint: Transform,
     pub player: Player,
     pub environment: Environment<'a>,
+    pub z_f32_8: [f32; 8],
+    pub z_u8: u8,
     #[structr(len = "u32")]
     pub boundary_vertices: Vec<BoundaryVertex>,
     #[structr(len = "u32")]
@@ -508,7 +510,7 @@ pub mod environment {
         pub nightlight: bool,
         pub ambience: Sound<'a>,
         pub slippery: f32,
-        pub z_f32: f32,
+        pub lights_fog_scale: f32,
     }
 
     #[derive(Debug, Clone, Parse)]
