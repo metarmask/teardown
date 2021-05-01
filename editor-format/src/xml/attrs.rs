@@ -15,7 +15,7 @@ use quick_xml::{
 };
 use teardown_bin_format::{
     environment::{self, Fog, Skybox, Sun},
-    Body, Entity, Environment, Exposure, Joint, JointKind, Light, LightKind, Script, Sound,
+    Body, Entity, Environment, Exposure, Joint, JointKind, Light, LightKind, Rope, Script, Sound,
     Transform, Vehicle, Water,
 };
 
@@ -284,23 +284,44 @@ impl ToXMLAttributes for Body {
 
 impl ToXMLAttributes for Joint {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        if let Some(rope) = &self.rope {
+            flatten(vec![
+                vec![("size", self.size.to_string())],
+                rope.to_xml_attrs(),
+            ])
+        } else {
+            vec![
+                (
+                    "type",
+                    match self.kind {
+                        JointKind::Ball => "ball",
+                        JointKind::Hinge => "hinge",
+                        JointKind::Prismatic => "prismatic",
+                        JointKind::Rope => unreachable!(),
+                    }
+                    .to_string(),
+                ),
+                ("size", self.size.to_string()),
+                ("rotstrength", self.rot_strength.to_string()),
+                ("rotspring", self.rot_spring.to_string()),
+                (
+                    "limits",
+                    join_as_strings(self.hinge_min_max.iter().copied().map(f32::to_degrees)),
+                ),
+                ("collide", self.collisions.to_string()),
+                // ("sound", .to_string())
+            ]
+        }
+    }
+}
+
+impl ToXMLAttributes for Rope {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         vec![
-            (
-                "type",
-                match self.kind {
-                    JointKind::Ball => "ball",
-                    JointKind::Hinge => "hinge",
-                    JointKind::Prismatic => "prismatic",
-                    JointKind::Rope => unreachable!(),
-                }
-                .to_string(),
-            ),
-            ("size", self.size.to_string()),
-            ("rotstrength", self.rot_strength.to_string()),
-            ("rotspring", self.rot_spring.to_string()),
-            ("limits", join_as_strings(self.hinge_min_max.iter())),
-            ("collide", self.collisions.to_string()),
-            // ("sound", .to_string())
+            ("color", join_as_strings(self.rgba.0.iter())),
+            ("strength", self.strength.to_string()),
+            ("slack", self.float.to_string()),
+            ("maxstretch", self.max_stretch.to_string()),
         ]
     }
 }

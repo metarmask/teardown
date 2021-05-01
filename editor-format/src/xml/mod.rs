@@ -8,7 +8,7 @@ use quick_xml::{
 use teardown_bin_format::{BoundaryVertex, Entity, EntityKind, Joint, JointKind, Shape, Voxels};
 
 use crate::{
-    hash,
+    hash, quaternion_to_euler,
     xml::attrs::{flatten, join_as_strings, ToXMLAttributes},
     PaletteMapping, Result, SceneWriter, WriteEntityContext, XMLResult,
 };
@@ -127,7 +127,7 @@ impl WriteEntityContext<'_, &mut File> {
 
     pub(crate) fn joint_xml(&self, joint: &Joint) -> (&'static str, Vec<(&'static str, String)>) {
         if joint.kind == JointKind::Rope {
-            ("rope", vec![])
+            ("rope", joint.to_xml_attrs())
         } else {
             let shape_handle = joint.shape_handles[0];
             let relative_pos = joint.shape_positions[0];
@@ -145,7 +145,10 @@ impl WriteEntityContext<'_, &mut File> {
                     relative_pos[2],
                 ));
                 attrs.push(("pos", join_as_strings(pos.coords.iter())));
-                attrs.push(("rot", join_as_strings(joint.ball_rot.iter())));
+                attrs.push((
+                    "rot",
+                    join_as_strings(quaternion_to_euler(joint.ball_rot).iter()),
+                ));
             }
             ("joint", attrs)
         }
