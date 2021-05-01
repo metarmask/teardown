@@ -16,7 +16,7 @@ use iced::{
 };
 use owning_ref::OwningHandle;
 use teardown_bin_format::{parse_file, OwnedScene, Scene};
-use teardown_editor_format::{SceneWriterBuilder, UnwrapLock, VoxStore};
+use teardown_editor_format::{util::UnwrapLock, vox, SceneWriterBuilder};
 
 use self::alphanum_ord::AlphanumericOrd;
 use crate::{find_teardown_dirs, Directories, Error};
@@ -26,7 +26,7 @@ pub struct MainView {
     levels: Vec<Level>,
     n_special_levels: usize,
     selected_level: Option<usize>,
-    vox_store: Arc<Mutex<VoxStore>>,
+    vox_store: Arc<Mutex<vox::Store>>,
     button_help: button::State,
     scroll_state: scrollable::State,
 }
@@ -52,7 +52,7 @@ struct LevelViews<'a> {
 
 fn write_scene_and_vox(
     scene_writer_builder: &SceneWriterBuilder,
-    vox_store: &Arc<Mutex<VoxStore>>,
+    vox_store: &Arc<Mutex<vox::Store>>,
 ) -> Result<()> {
     scene_writer_builder
         .build()
@@ -127,7 +127,7 @@ impl Level {
     fn update(
         &mut self,
         dirs: &Directories,
-        vox_store: &Arc<Mutex<VoxStore>>,
+        vox_store: &Arc<Mutex<vox::Store>>,
         message: LevelMessage,
     ) -> Command<LevelMessage> {
         match message {
@@ -225,7 +225,7 @@ impl MainView {
     fn new() -> Result<Self> {
         let dirs = find_teardown_dirs()?;
         let levels = init_levels(&dirs)?;
-        let vox_store = VoxStore::new(&dirs.main)?;
+        let vox_store = vox::Store::new(&dirs.main)?;
         Ok(MainView {
             levels,
             n_special_levels: 1,

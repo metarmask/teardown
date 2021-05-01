@@ -8,13 +8,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ::vox as vox_format;
 use anyhow::{Context, Result};
 use clap::ArgGroup;
 use iced::{Application, Settings};
 use steamy_vdf as vdf;
 use structopt::StructOpt;
 use teardown_bin_format::parse_file;
-use teardown_editor_format::{SceneWriterBuilder, SceneWriterBuilderError, VoxStore};
+use teardown_editor_format::{vox, SceneWriterBuilder, SceneWriterBuilderError};
 use thiserror::Error;
 use Error::UnexpectedVDF as VDFErr;
 
@@ -105,7 +106,7 @@ fn main() -> Result<()> {
         })?; return Ok(()); };
     match command {
         Subcommand::ShowVox { vox_file } => {
-            let semantic = vox::syntax::parse_file(vox_file);
+            let semantic = vox_format::syntax::parse_file(vox_file);
             println!("{:?}", semantic);
         }
         Subcommand::ConvertAll {
@@ -114,7 +115,7 @@ fn main() -> Result<()> {
         } => {
             let data_folder = teardown_folder.join("data");
             let mut created_mods = HashSet::new();
-            let vox_store = VoxStore::new(teardown_folder)?;
+            let vox_store = vox::Store::new(teardown_folder)?;
             for file in fs::read_dir(data_folder.join("bin"))? {
                 let file = file?;
                 println!("Reading {}", file.file_name().to_string_lossy());
@@ -190,7 +191,7 @@ fn main() -> Result<()> {
                 } => {
                     #[rustfmt::skip]
                         SceneWriterBuilder::default()
-                            .vox_store(VoxStore::new(dirs.main)?)
+                            .vox_store(vox::Store::new(dirs.main)?)
                             .mod_dir(dirs.mods.join(mod_name))
                             .name(level_name)
                             .scene(&scene)

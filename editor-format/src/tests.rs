@@ -1,8 +1,10 @@
 #[allow(clippy::approx_constant, clippy::unreadable_literal)]
 mod transform_shape {
     use approx::assert_relative_eq;
+    use nalgebra::{UnitQuaternion, Vector3};
+    use teardown_bin_format::Transform;
 
-    use super::super::*;
+    use crate::vox::transform_shape;
 
     fn rot(x: f32, y: f32, z: f32) -> [f32; 4] {
         let x = UnitQuaternion::from_axis_angle(&Vector3::x_axis(), x.to_radians());
@@ -219,7 +221,12 @@ mod transform_shape {
 }
 
 mod palette {
-    use super::super::*;
+    use teardown_bin_format::{Material, MaterialKind};
+
+    use crate::{
+        util::IntoFixedArray,
+        vox::{remap_materials, PaletteMapping},
+    };
 
     #[test]
     fn preserve_original() {
@@ -298,9 +305,11 @@ mod palette {
 }
 
 mod convert_material {
+    use ::vox::semantic::{Material as VoxMaterial, MaterialKind as VoxMaterialKind};
     use approx::assert_relative_eq;
+    use teardown_bin_format::{Material, Rgba};
 
-    use super::super::*;
+    use crate::vox::convert_material;
 
     #[test]
     fn re00_s10_m00() {
