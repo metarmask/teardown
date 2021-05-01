@@ -763,11 +763,15 @@ impl<'p> Parse<'p> for LuaValue<'p> {
         Ok(match parser.parse::<u32>()? {
             1 => LuaValue::Boolean(parser.parse()?),
             // TODO: Replace error kind
-            2 => return Err(parser.error(ParseErrorKind::NoReprIntMatch(2))),
+            2 => return Err(Parser::error(ParseErrorKind::NoReprIntMatch(2))),
             3 => LuaValue::Number(parser.parse()?),
             4 => LuaValue::String(parser.parse()?),
             5 => LuaValue::Table(parser.parse()?),
-            other => return Err(parser.error(ParseErrorKind::NoReprIntMatch(u64::from(other)))),
+            other => {
+                return Err(Parser::error(ParseErrorKind::NoReprIntMatch(u64::from(
+                    other,
+                ))))
+            }
         })
     }
 }
