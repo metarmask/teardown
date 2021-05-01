@@ -33,6 +33,7 @@ use teardown_bin_format::{
 use thiserror::Error;
 
 use crate::{
+    util::IntoFixedArray,
     vox::{transform_shape, PaletteMapping},
     xml::{
         attrs::{join_as_strings, ToXMLAttributes},
@@ -143,13 +144,22 @@ impl WriteEntityContext<'_, &mut File> {
             }
             #[rustfmt::skip]
             EntityKind::Joint(Joint { rope: Some(Rope { knots, .. }), .. }) => {
-                for pos in [knots.first().map(|knot| knot.from), knots.last().map(|knot| knot.to),].iter().flatten() {
+                let mut write_loc = |name: &str, pos: &[f32; 3]| {
                     self.writer.write_event(Event::Empty(
                         BytesStart::owned_name("location")
-                            .with_attributes(vec![("pos", join_as_strings(pos.iter()).as_ref())]),
-                    ))?;
+                            .with_attributes(vec![("name", name), ("pos", join_as_strings(pos.iter()).as_str())]),
+                    ))
+                };
+                if knots.len() >= 2 {
+                    write_loc("from", &knots[0].from)?;
+                    write_loc("to", &knots[knots.len()-1].to)?;
+                    let between = &knots[1..knots.len()-1];
+                    for knot in between {
+                        let average = knot.from.iter().zip(knot.to.iter()).map(|(from, to)| (from + to) / 2.0).collect::<Vec<_>>().into_fixed();
+                        write_loc("between", &average)?;
+                    }
                 }
-            },
+            }
             _ => {}
         }
         self.writer.write_event(Event::End(end))?;
