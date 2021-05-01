@@ -905,16 +905,24 @@ impl<W: Write> WriteEntityContext<'_, W> {
         } else {
             let shape_handle = joint.shape_handles[0];
             let relative_pos = joint.shape_positions[0];
-            let mut attrs = vec![(
-                "type",
-                match joint.kind {
-                    JointKind::Ball => "ball",
-                    JointKind::Hinge => "hinge",
-                    JointKind::Prismatic => "prismatic",
-                    JointKind::Rope => unreachable!(),
-                }
-                .to_string(),
-            )];
+            let mut attrs = vec![
+                (
+                    "type",
+                    match joint.kind {
+                        JointKind::Ball => "ball",
+                        JointKind::Hinge => "hinge",
+                        JointKind::Prismatic => "prismatic",
+                        JointKind::Rope => unreachable!(),
+                    }
+                    .to_string(),
+                ),
+                ("size", joint.size.to_string()),
+                ("rotstrength", joint.rot_strength.to_string()),
+                ("rotspring", joint.rot_spring.to_string()),
+                ("limits", join_as_strings(joint.hinge_min_max.iter())),
+                ("collide", joint.collisions.to_string()),
+                // ("sound", .to_string())
+            ];
             // FIXME: Inefficient
             if let Some(shape) = self.scene.iter_entities().find(|e| {
                 matches!(e.kind, EntityKind::Body(_))
@@ -927,7 +935,8 @@ impl<W: Write> WriteEntityContext<'_, W> {
                     relative_pos[1],
                     relative_pos[2],
                 ));
-                attrs.push(("pos", join_as_strings(pos.coords.iter())))
+                attrs.push(("pos", join_as_strings(pos.coords.iter())));
+                attrs.push(("rot", join_as_strings(joint.ball_rot.iter())));
             }
             ("joint", attrs)
         }
