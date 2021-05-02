@@ -1,4 +1,5 @@
 #![feature(stmt_expr_attributes)]
+#[cfg(feature = "graphical")]
 mod graphical;
 
 use std::{
@@ -11,6 +12,7 @@ use std::{
 use ::vox as vox_format;
 use anyhow::{Context, Result};
 use clap::ArgGroup;
+#[cfg(feature = "graphical")]
 use iced::{Application, Settings};
 use steamy_vdf as vdf;
 use structopt::StructOpt;
@@ -35,6 +37,7 @@ enum Error {
     UnexpectedVDF,
     #[error("Could not build the scene writer: {:#}", 0)]
     SceneWriterBuild(SceneWriterBuilderError),
+    #[cfg(feature = "graphical")]
     #[error("Could not initialize iced GUI: {0}")]
     IcedInit(String),
     #[error("No Steam install directory")]
@@ -99,11 +102,18 @@ fn level_name_from_path<P: AsRef<Path>>(path: P) -> String {
 #[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
     let args = Options::from_args();
-    #[rustfmt::skip]
-    let command = if let Some(command) = args.command { command } else {
-        graphical::App::run(Settings::default()).map_err(|iced_error| {
-            Error::IcedInit(format!("{:#}", iced_error))
-        })?; return Ok(()); };
+    let command = if let Some(command) = args.command {
+        command
+    } else {
+        #[cfg(feature = "graphical")]
+        graphical::App::run(Settings::default())
+            .map_err(|iced_error| Error::IcedInit(format!("{:#}", iced_error)))?;
+
+        #[cfg(not(feature = "graphical"))]
+        println!("The binary was not compiled with the graphical feature");
+        return Ok(());
+    };
+
     match command {
         Subcommand::ShowVox { vox_file } => {
             let semantic = vox_format::syntax::parse_file(vox_file);

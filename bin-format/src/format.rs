@@ -1065,6 +1065,7 @@ impl<'a> Voxels<'a> {
 }
 
 #[allow(clippy::type_complexity)]
+#[optimize(speed)]
 pub struct VoxelIter<'a>(
     Filter<
         Zip<
@@ -1079,16 +1080,19 @@ pub struct VoxelIter<'a>(
     >,
 );
 
+#[optimize(speed)]
 fn flat_map_voxel_data_chunk([n_times, palette_index]: [u8; 2]) -> Take<Repeat<u8>> {
     iter::repeat(palette_index).take(n_times as usize + 1)
 }
 
+#[optimize(speed)]
 impl<'a> VoxelIter<'a> {
     fn new(voxel_data: &'a Voxels<'a>) -> Self {
         Self::new_from_parts(&voxel_data.size, voxel_data.palette_index_runs.as_ref())
     }
 
     #[allow(clippy::cast_possible_wrap)]
+    #[optimize(speed)]
     fn new_from_parts(size: &'a [u32; 3], compressed_palette_indices: &'a [u8]) -> Self {
         VoxelIter(
             BoxIter::new(size.map(|dim| dim as i32), [0, 1, 2])

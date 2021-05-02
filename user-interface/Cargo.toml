@@ -10,15 +10,20 @@ structopt = "0.3"
 clap = "2.33"
 vox = { git = "https://github.com/metarmask/vox-format", rev = "1adf146" }
 rayon = "1.5"
-iced = "0.3"
-alphanumeric-sort = "1.4"
 owning_ref = "0.4"
 dirs = "3.0"
 steamy-vdf = "0.2"
 anyhow = "1.0"
 thiserror = "1.0"
-futures = "0.3"
-open = "1.6"
+
+iced = { version = "0.3", optional = true }
+alphanumeric-sort = { version = "1.4", optional = true }
+futures = { version = "0.3", optional = true }
+open = { version = "1.6", optional = true }
+
+[features]
+graphical = ["iced", "alphanumeric-sort", "futures", "open"]
+default = ["graphical"]
 
 [target.'cfg(windows)'.dependencies]
 registry = "1.1"
