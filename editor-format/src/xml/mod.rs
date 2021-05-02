@@ -68,7 +68,7 @@ impl SceneWriter<'_> {
             BytesStart::owned_name("script").with_attributes(vec![
                 ("name", "turn off lights"),
                 ("file", "lightsoff.lua"),
-                ("param0", "global"),
+                ("param0", "global=true"),
             ]),
         ))?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
