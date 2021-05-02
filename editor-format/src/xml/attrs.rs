@@ -206,10 +206,20 @@ impl ToXMLAttributes for Light<'_> {
                 }
                 .to_string(),
             ),
-            ("color", join_as_strings(self.rgba.0.iter())),
+            (
+                "color",
+                join_as_strings(self.rgba.0.iter().map(|c| c.powf(0.45_45_45)).take(3)),
+            ),
             ("scale", self.scale.to_string()),
-            ("angle", self.cone_angle.to_degrees().to_string()),
-            ("penumbra", self.cone_penumbra.to_degrees().to_string()),
+            (
+                "angle",
+                (f32::acos(self.cone_angle).to_degrees() * 2.0).to_string(),
+            ),
+            (
+                "penumbra",
+                ((f32::acos(self.cone_angle) - f32::acos(self.cone_penumbra)).to_degrees() * 2.0)
+                    .to_string(),
+            ),
             ("size", match self.kind {
                 LightKind::Area => join_as_strings(self.area_size.iter().map(|half| half * 2.)),
                 _ => self.size.to_string(),
