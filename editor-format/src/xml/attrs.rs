@@ -16,7 +16,7 @@ use quick_xml::{
 use teardown_bin_format::{
     environment::{self, Fog, Skybox, Sun},
     Body, Entity, Environment, Exposure, Joint, JointKind, Light, LightKind, Rope, Script, Sound,
-    Transform, Vehicle, Water,
+    Transform, Vehicle, Water, Wheel,
 };
 
 use crate::{quaternion_to_euler, xml::WriteXML};
@@ -326,6 +326,16 @@ impl ToXMLAttributes for Rope {
             ("strength", self.strength.to_string()),
             ("slack", self.float.to_string()),
             ("maxstretch", self.max_stretch.to_string()),
+        ]
+    }
+}
+
+impl ToXMLAttributes for Wheel {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("drive", self.drive_factor.to_string()),
+            ("steer", self.steer_factor.to_string()),
+            ("travel", join_as_strings(self.suspension_range.iter())),
         ]
     }
 }

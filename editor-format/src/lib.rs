@@ -108,7 +108,7 @@ impl WriteEntityContext<'_, &mut File> {
                 vehicle_parent = true;
                 ("vehicle", vehicle.to_xml_attrs())
             }
-            EntityKind::Wheel(_) => ("wheel", vec![]),
+            EntityKind::Wheel(wheel) => ("wheel", wheel.to_xml_attrs()),
             EntityKind::Joint(joint) => self.joint_xml(joint),
             EntityKind::Light(light) => {
                 if !light.on {

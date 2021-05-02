@@ -291,7 +291,7 @@ pub enum EntityKind<'a> {
     Vehicle(Vehicle<'a>),
     Trigger(Trigger<'a>),
     Location(Location),
-    Wheel(Wheel<'a>),
+    Wheel(Wheel),
     Joint(Joint),
     Script(Script<'a>),
     Light(Light<'a>),
@@ -586,9 +586,20 @@ pub struct Body {
 }
 
 #[derive(Debug, Clone, Parse)]
-pub struct Wheel<'a> {
+pub struct Wheel {
     pub z_u8_start: u8,
-    pub z_u8_108: &'a [u8; 108],
+    pub vehicle: u32,
+    pub vehicle_body: u32,
+    pub body: u32,
+    pub shape: u32,
+    pub transform: Transform,
+    pub z_f32_7: [f32; 7],
+    pub steer_factor: f32,
+    pub drive_factor: f32,
+    pub suspension_range: [f32; 2],
+    pub z1_f32_2: [f32; 2],
+    pub angular_speed: f32,
+    pub z2_f32_2: [f32; 2],
 }
 
 #[derive(Debug, Clone, Parse)]
