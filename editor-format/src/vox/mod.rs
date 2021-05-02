@@ -386,13 +386,6 @@ pub(crate) fn convert_material(material: &Material) -> VoxMaterial {
         vox_mat.emit = Some(e / 10_f32.powf(flux - 1.));
         VoxMaterialKind::Emit
     } else {
-        #[allow(clippy::float_cmp)]
-        if material.reflectivity != material.metalness {
-            eprintln!(
-                "shinyness {} != reflectivity {} in {:?}",
-                material.reflectivity, material.metalness, material
-            )
-        }
         vox_mat.metal = Some(material.metalness);
         vox_mat.rough = Some(1.0 - material.shinyness);
         vox_mat.spec = Some(material.reflectivity);
