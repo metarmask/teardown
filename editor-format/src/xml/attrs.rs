@@ -19,6 +19,7 @@ use teardown_bin_format::{
     Transform, Vehicle, Water,
 };
 
+use super::tags_to_string;
 use crate::{quaternion_to_euler, xml::WriteXML};
 
 pub trait ToXMLAttributes {
@@ -51,15 +52,11 @@ impl ToXMLAttributes for Entity<'_> {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         let mut attrs = Vec::new();
         if !self.tags.0.is_empty() {
-            #[rustfmt::skip]
-            attrs.push(("tags",
-                join_as_strings(self.tags.0.iter().map(|(&k, &v)| {
-                    if v.is_empty() { k.into() } else { format!("{}={}", k, v) } })), ));
+            attrs.push(("tags", tags_to_string(&self.tags)));
         }
         if !self.desc.is_empty() {
             attrs.push(("desc", self.desc.to_owned()));
         }
-        attrs.push(("name", self.handle.to_string()));
         attrs
     }
 }
@@ -161,6 +158,7 @@ impl<'a> WriteXML for Environment<'a> {
                     self.fog.to_xml_attrs(),
                     self.water.to_xml_attrs(),
                     vec![
+                        ("name", "the".into()),
                         ("nightlight", self.nightlight.to_string()),
                         (
                             "ambience",
@@ -288,7 +286,7 @@ impl ToXMLAttributes for Script<'_> {
 
 impl ToXMLAttributes for Body {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
-        vec![("dynamic", (self.dynamic == 1).to_string())]
+        vec![("dynamic", self.dynamic.to_string())]
     }
 }
 

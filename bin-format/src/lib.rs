@@ -1,4 +1,4 @@
-#![feature(array_map, array_chunks, bool_to_option)]
+#![feature(array_map, array_chunks, bool_to_option, format_args_capture)]
 use std::{
     error::Error as StdError,
     fs::File,

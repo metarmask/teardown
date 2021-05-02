@@ -37,7 +37,7 @@ use crate::{
     vox::{transform_shape, PaletteMapping},
     xml::{
         attrs::{join_as_strings, ToXMLAttributes},
-        WriteXML,
+        tags_to_string, WriteXML,
     },
 };
 
@@ -97,7 +97,7 @@ impl WriteEntityContext<'_, &mut File> {
                     }
                     return self.write_entity_xml(&entity.children[0], Some(entity), dynamic);
                 }
-                dynamic = body.dynamic == 1;
+                dynamic = body.dynamic;
                 ("body", body.to_xml_attrs())
             }
             EntityKind::Shape(shape) => self.get_shape_name_and_xml_attrs(entity, shape),
@@ -112,7 +112,7 @@ impl WriteEntityContext<'_, &mut File> {
             EntityKind::Water(water) => ("water", water.to_xml_attrs()),
         };
         let start = BytesStart::owned_name(name);
-        let mut attrs = Vec::new();
+        let mut attrs = vec![("name", self.name_entity(entity))];
         if let Some(mut world_transform) = corrected_transform(Some(entity)) {
             // If parent body is dynamic, then light is relative to shape in the save
             // representation
@@ -164,6 +164,55 @@ impl WriteEntityContext<'_, &mut File> {
         }
         self.writer.write_event(Event::End(end))?;
         Ok(())
+    }
+
+    fn is_flashlight(&self, entity: &Entity) -> bool {
+        let last_entity = self.scene.entities.last();
+        last_entity.map_or(false, |last| last.handle == entity.handle)
+    }
+
+    fn name_entity(&self, entity: &Entity) -> String {
+        let mut parts = vec![entity.handle.to_string()];
+        match &entity.kind {
+            EntityKind::Shape(shape) => {
+                parts.push(format!("{} voxels", shape.voxels.iter().count()))
+            }
+            EntityKind::Body(body) => {
+                if !body.dynamic {
+                    parts.push("static".into())
+                }
+            }
+            EntityKind::Screen(_) | EntityKind::Trigger(_) | EntityKind::Wheel(_) => {}
+            EntityKind::Water(water) => {
+                parts.push(format!("{} m deep", water.depth));
+            }
+            EntityKind::Vehicle(vehicle) => {
+                if !vehicle.properties.sound.name.is_empty() {}
+                parts.push(vehicle.properties.sound.name.into())
+            }
+            EntityKind::Location(_) => parts.push(tags_to_string(&entity.tags)),
+            EntityKind::Joint(joint) => parts.push(format!("{:?}", joint.kind).to_lowercase()),
+            EntityKind::Script(script) => {
+                let short_path = script
+                    .to_xml_attrs()
+                    .into_iter()
+                    .find_map(|(k, v)| if k == "file" { Some(v) } else { None })
+                    .unwrap_or_default();
+                parts.push(
+                    short_path
+                        .strip_suffix(".lua")
+                        .unwrap_or(&short_path)
+                        .into(),
+                )
+            }
+            EntityKind::Light(light) => {
+                if self.is_flashlight(entity) {
+                    parts.push("flashlight".into());
+                }
+                parts.push(format!("{:?}", light.kind).to_lowercase())
+            }
+        }
+        parts.join(" ")
     }
 }
 

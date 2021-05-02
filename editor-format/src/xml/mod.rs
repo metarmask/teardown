@@ -5,7 +5,9 @@ use quick_xml::{
     events::{BytesStart, Event},
     Writer,
 };
-use teardown_bin_format::{BoundaryVertex, Entity, EntityKind, Joint, JointKind, Shape, Voxels};
+use teardown_bin_format::{
+    BoundaryVertex, Entity, EntityKind, Joint, JointKind, Shape, Tags, Voxels,
+};
 
 use crate::{
     hash, quaternion_to_euler,
@@ -80,7 +82,7 @@ impl SceneWriter<'_> {
         boundary: &[BoundaryVertex],
         writer: &mut Writer<&mut File>,
     ) -> XMLResult<()> {
-        let start = BytesStart::owned_name("boundary");
+        let start = BytesStart::owned_name("boundary").with_attributes(vec![("name", "the")]);
         let start_for_end = start.to_owned();
         writer.write_event(Event::Start(start))?;
         boundary.write_xml(writer)?;
@@ -153,4 +155,19 @@ impl WriteEntityContext<'_, &mut File> {
             ("joint", attrs)
         }
     }
+}
+
+pub(crate) fn tag_to_string(tag: (&&str, &&str)) -> String {
+    let (&k, &v) = tag;
+    let mut s = k.to_string();
+    if !v.is_empty() {
+        s += "=";
+        s += v;
+    }
+    s
+}
+
+pub(crate) fn tags_to_string(tags: &Tags) -> String {
+    let mapped = tags.0.iter().map(tag_to_string);
+    mapped.collect::<Vec<_>>().join(" ")
 }

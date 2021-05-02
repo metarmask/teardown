@@ -597,8 +597,8 @@ pub struct Body {
     pub transform: Transform,
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
-    pub dynamic: u8,
-    pub active: u8,
+    pub dynamic: bool,
+    pub active: bool,
     pub z_u8: u8,
 }
 
@@ -999,6 +999,7 @@ impl<'a> Shape<'a> {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Voxels<'a> {
     pub size: [u32; 3],
+    /// Pairs of (n-1,  palette index)
     pub palette_index_runs: Cow<'a, [u8]>,
 }
 
