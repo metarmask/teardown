@@ -79,7 +79,7 @@ impl SceneWriter<'_> {
             writer: &mut xml_writer,
         };
         for entity in entities {
-            write_entity_context.write_entity_xml(entity, None, false)?;
+            write_entity_context.write_entity_xml(entity, None, false, false)?;
         }
         xml_writer.write_event(Event::End(end))?;
         Ok(())

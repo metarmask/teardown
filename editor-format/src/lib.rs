@@ -85,6 +85,7 @@ impl WriteEntityContext<'_, &mut File> {
         entity: &Entity,
         parent: Option<&Entity>,
         mut dynamic: bool,
+        mut vehicle_parent: bool,
     ) -> Result<()> {
         // debug_write_entity_positions(entity, parent);
         let mut tags = entity.tags.clone();
@@ -94,16 +95,19 @@ impl WriteEntityContext<'_, &mut File> {
                 // Skip the body in wheels, and write the shape inside directly
                 if matches!(parent, Some(Entity { kind: EntityKind::Wheel(_), .. })) {
                     if entity.children.len() != 1 {
-                        return Err(Error::SingleWheelChild(format!("{:?}", entity)).into());
+                        return Err(Error::SingleWheelChild(format!("{:?}", parent)).into());
                     }
-                    return self.write_entity_xml(&entity.children[0], Some(entity), dynamic);
+                    return self.write_entity_xml(&entity.children[0], Some(entity), dynamic, vehicle_parent);
                 }
                 dynamic = body.dynamic;
                 ("body", body.to_xml_attrs())
             }
             EntityKind::Shape(shape) => self.get_shape_name_and_xml_attrs(entity, shape),
             EntityKind::Script(script) => ("script", script.to_xml_attrs()),
-            EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
+            EntityKind::Vehicle(vehicle) => {
+                vehicle_parent = true;
+                ("vehicle", vehicle.to_xml_attrs())
+            }
             EntityKind::Wheel(_) => ("wheel", vec![]),
             EntityKind::Joint(joint) => self.joint_xml(joint),
             EntityKind::Light(light) => {
@@ -121,19 +125,26 @@ impl WriteEntityContext<'_, &mut File> {
         let start = BytesStart::owned_name(name);
         let mut attrs = vec![("name", self.name_entity(entity))];
         if let Some(mut world_transform) = corrected_transform(Some(entity)) {
-            // If parent body is dynamic, then light is relative to shape in the save
-            // representation
-            if let Some(parent_transform) = corrected_transform(parent) {
-                #[rustfmt::skip]
-                let parent_is_vehicle = matches!(parent, Some(Entity { kind: EntityKind::Vehicle(_), .. }));
-                world_transform = if dynamic && !parent_is_vehicle {
-                    world_transform
-                } else {
+            #[rustfmt::skip]
+            let direct_parent_is_vehicle =
+                matches!(parent, Some(Entity { kind: EntityKind::Vehicle(_), .. }));
+            let is_light = matches!(entity.kind, EntityKind::Light(_) | EntityKind::Screen(_));
+            let is_wheel = matches!(entity.kind, EntityKind::Wheel(_));
+            // If this entity is:
+            // * a light and also a child of static body or vehicle
+            // * a vehicle body (or any direct child of vehicle)
+            // * a wheel
+            if (is_light && (!dynamic || vehicle_parent)) || direct_parent_is_vehicle || is_wheel {
+                // ...and the parent has a transform (which has been corrected for the offset
+                // caused by putting it in a vox object)
+                if let Some(parent_transform) = corrected_transform(parent) {
+                    // ... set the positon in editor to be the relative position between this entity
+                    // and its parent in the binary
                     let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
                     let parent_isometry: Isometry3<f32> = parent_transform.into();
                     world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
-                    world_transform_isometry.into()
-                };
+                    world_transform = world_transform_isometry.into()
+                }
             }
             attrs.append(&mut world_transform.to_xml_attrs());
         }
@@ -146,7 +157,7 @@ impl WriteEntityContext<'_, &mut File> {
         let end = start.to_end().into_owned();
         self.writer.write_event(Event::Start(start))?;
         for child in &entity.children {
-            self.write_entity_xml(child, Some(entity), dynamic)?;
+            self.write_entity_xml(child, Some(entity), dynamic, vehicle_parent)?;
         }
         match &entity.kind {
             EntityKind::Water(water) => {
@@ -252,13 +263,21 @@ fn debug_write_entity_positions(entity: &Entity, parent: Option<&Entity>) {
 
 pub(crate) fn corrected_transform(parent: Option<&Entity>) -> Option<Transform> {
     parent.and_then(|parent| {
-        parent.transform().map(|transform: &Transform| {
-            if let EntityKind::Shape(shape) = &parent.kind {
-                transform_shape(&transform, shape.voxels.size)
+        if let EntityKind::Wheel(_) = &parent.kind {
+            if parent.children.len() == 1 {
+                parent.children[0].transform().map(Clone::clone)
             } else {
-                transform.clone()
+                None
             }
-        })
+        } else {
+            parent.transform().map(|transform: &Transform| {
+                if let EntityKind::Shape(shape) = &parent.kind {
+                    transform_shape(&transform, shape.voxels.size)
+                } else {
+                    transform.clone()
+                }
+            })
+        }
     })
 }
 
