@@ -109,7 +109,9 @@ pub mod joint {
         pub rot_strength: f32,
         pub rot_spring: f32,
         pub ball_rot: [f32; 4],
-        pub hinge_min_max: [f32; 2],
+        /// Angle limits in radians for hinges, distance limits in meters for
+        /// prismatic joints.
+        pub limits: [f32; 2],
         pub z_f32_2: [f32; 2],
         pub size: f32,
         #[structr(

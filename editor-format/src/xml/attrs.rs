@@ -310,7 +310,15 @@ impl ToXMLAttributes for Joint {
                 ("rotspring", self.rot_spring.to_string()),
                 (
                     "limits",
-                    join_as_strings(self.hinge_min_max.iter().copied().map(f32::to_degrees)),
+                    join_as_strings({
+                        let mut limits = self.limits;
+                        if let JointKind::Hinge = self.kind {
+                            for angle in &mut limits {
+                                *angle = f32::to_degrees(*angle)
+                            }
+                        }
+                        limits.to_vec().iter()
+                    }),
                 ),
                 ("collide", self.collisions.to_string()),
                 // ("sound", .to_string())
