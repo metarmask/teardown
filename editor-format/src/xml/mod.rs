@@ -64,6 +64,13 @@ impl SceneWriter<'_> {
                 ]).iter().map(|(k, v)| (*k, v.as_ref())),),))?;
         self.scene.environment.write_xml(&mut xml_writer)?;
         Self::write_boundary(&self.scene.boundary_vertices, &mut xml_writer)?;
+        xml_writer.write_event(Event::Empty(
+            BytesStart::owned_name("script").with_attributes(vec![
+                ("name", "turn off lights"),
+                ("file", "lightsoff.lua"),
+                ("param0", "global"),
+            ]),
+        ))?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         let mut write_entity_context = WriteEntityContext {
             entity_voxels,

@@ -19,7 +19,6 @@ use teardown_bin_format::{
     Transform, Vehicle, Water,
 };
 
-use super::tags_to_string;
 use crate::{quaternion_to_euler, xml::WriteXML};
 
 pub trait ToXMLAttributes {
@@ -51,9 +50,6 @@ pub fn join_as_strings<I: IntoIterator<Item = U>, U: ToString>(iter: I) -> Strin
 impl ToXMLAttributes for Entity<'_> {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         let mut attrs = Vec::new();
-        if !self.tags.0.is_empty() {
-            attrs.push(("tags", tags_to_string(&self.tags)));
-        }
         if !self.desc.is_empty() {
             attrs.push(("desc", self.desc.to_owned()));
         }

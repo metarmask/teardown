@@ -64,7 +64,7 @@ pub mod light {
 
     #[derive(Debug, Clone, Parse)]
     pub struct Light<'a> {
-        pub z_u8_start: u8,
+        pub on: bool,
         pub kind: Kind,
         pub transform: Transform,
         pub rgba: Rgba,
@@ -312,23 +312,6 @@ impl<'a> EntityKind<'a> {
             /* EntityKind::Failed(_) | */
             EntityKind::Joint(_) | EntityKind::Wheel(_) | EntityKind::Script(_) => return None,
         })
-    }
-
-    #[must_use]
-    pub fn z_u8_start(&self) -> u8 {
-        *match self {
-            EntityKind::Shape(shape) => &shape.z_u8_start,
-            EntityKind::Body(body) => &body.z_u8_start,
-            EntityKind::Screen(screen) => &screen.z_u8_start,
-            EntityKind::Water(water) => &water.z_u8_start,
-            EntityKind::Vehicle(vehicle) => &vehicle.z_u8_start,
-            EntityKind::Trigger(trigger) => &trigger.z_u8_start,
-            EntityKind::Location(location) => &location.z_u8_start,
-            EntityKind::Joint(_) => &0,
-            EntityKind::Light(light) => &light.z_u8_start,
-            EntityKind::Wheel(wheel) => &wheel.z_u8_start,
-            EntityKind::Script(script) => &script.z_u8_start,
-        }
     }
 }
 

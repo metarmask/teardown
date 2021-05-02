@@ -87,6 +87,7 @@ impl WriteEntityContext<'_, &mut File> {
         mut dynamic: bool,
     ) -> Result<()> {
         // debug_write_entity_positions(entity, parent);
+        let mut tags = entity.tags.clone();
         let (name, mut kind_attrs) = match &entity.kind {
             EntityKind::Body(body) => {
                 #[rustfmt::skip]
@@ -105,7 +106,13 @@ impl WriteEntityContext<'_, &mut File> {
             EntityKind::Vehicle(vehicle) => ("vehicle", vehicle.to_xml_attrs()),
             EntityKind::Wheel(_) => ("wheel", vec![]),
             EntityKind::Joint(joint) => self.joint_xml(joint),
-            EntityKind::Light(light) => ("light", light.to_xml_attrs()),
+            EntityKind::Light(light) => {
+                if !light.on {
+                    tags.0.insert("turnoff", "");
+                }
+
+                ("light", light.to_xml_attrs())
+            }
             EntityKind::Location(_) => ("location", vec![]),
             EntityKind::Screen(_) => ("screen", vec![]),
             EntityKind::Trigger(_) => ("trigger", vec![]),
@@ -131,6 +138,9 @@ impl WriteEntityContext<'_, &mut File> {
             attrs.append(&mut world_transform.to_xml_attrs());
         }
         attrs.append(&mut entity.to_xml_attrs());
+        if !tags.0.is_empty() {
+            attrs.push(("tags", tags_to_string(&tags)));
+        }
         attrs.append(&mut kind_attrs);
         let start = start.with_attributes(attrs.iter().map(|(k, v)| (*k, v.as_ref())));
         let end = start.to_end().into_owned();
@@ -219,14 +229,13 @@ impl WriteEntityContext<'_, &mut File> {
 #[allow(dead_code)]
 fn debug_write_entity_positions(entity: &Entity, parent: Option<&Entity>) {
     println!(
-        "{:>8} {:<8}: {:+05.1?} {:+05.1?} {:+05.1?}", //  {:+05.1?}
+        "{:>8} {:<8}: {:+05.1?} {:+05.1?}", //  {:+05.1?}
         format!("{:?}", EntityKindVariants::from(&entity.kind)),
         entity.tags.0.iter().next().map_or("", |tag| tag.0),
         entity.transform().map(ToOwned::to_owned).map(|mut x| {
             x.pos = x.pos.map(|dim| dim * 10.);
             x
         }),
-        entity.kind.z_u8_start(),
         // {
         //     let mut trans = parent_transform.clone();
         //     trans.pos = trans.pos.map(|dim| dim * 10.);
