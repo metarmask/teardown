@@ -34,9 +34,10 @@ pub struct StoreFile {
 }
 use crate::{hash, Result, SceneWriter};
 
-pub(crate) fn transform_shape(transform: &Transform, size_i: [u32; 3]) -> Transform {
+pub(crate) fn transform_shape(transform: &Transform, mut size_i: [u32; 3]) -> Transform {
     let (mut pos, mut rot) = transform.as_nalegbra_pair();
-    let size = Vector3::from_iterator(size_i.iter().map(|&dim| (dim - dim % 2) as f32));
+    size_i = size_i.map(|dim| dim.clamp(0, 256));
+    let size = Vector3::from_iterator(size_i.iter().map(|dim| (dim - dim % 2) as f32));
     // 0.05 m = half a voxel
     let axis_relative_offset = Vector3::new(0.05, 0.05, 0.0);
     let axis_offset = size.component_mul(&axis_relative_offset);
