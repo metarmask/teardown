@@ -1075,23 +1075,16 @@ impl<'a> Voxels<'a> {
     pub fn iter(&'a self) -> VoxelIter<'a> {
         VoxelIter::new(self)
     }
+
+    #[must_use]
+    pub fn iter_volume(&'a self) -> VoxelVolumeIter<'a> {
+        VoxelVolumeIter::new(self)
+    }
 }
 
 #[allow(clippy::type_complexity)]
 #[optimize(speed)]
-pub struct VoxelIter<'a>(
-    Filter<
-        Zip<
-            BoxIter<i32>,
-            FlatMap<
-                Copied<ArrayChunks<'a, u8, 2>>,
-                Take<Repeat<u8>>,
-                fn([u8; 2]) -> Take<Repeat<u8>>,
-            >,
-        >,
-        fn(&([i32; 3], u8)) -> bool,
-    >,
-);
+pub struct VoxelIter<'a>(Filter<VoxelVolumeIter<'a>, fn(&([i32; 3], u8)) -> bool>);
 
 #[optimize(speed)]
 fn flat_map_voxel_data_chunk([n_times, palette_index]: [u8; 2]) -> Take<Repeat<u8>> {
@@ -1108,19 +1101,50 @@ impl<'a> VoxelIter<'a> {
     #[optimize(speed)]
     fn new_from_parts(size: &'a [u32; 3], compressed_palette_indices: &'a [u8]) -> Self {
         VoxelIter(
-            BoxIter::new(size.map(|dim| dim as i32), [0, 1, 2])
-                .zip(
-                    compressed_palette_indices
-                        .array_chunks::<2>()
-                        .copied()
-                        .flat_map(flat_map_voxel_data_chunk as fn([u8; 2]) -> Take<Repeat<u8>>),
-                )
+            VoxelVolumeIter::new_from_parts(size, compressed_palette_indices)
                 .filter(|(_, palette_index)| *palette_index != 0),
         )
     }
 }
 
 impl<'a> Iterator for VoxelIter<'a> {
+    type Item = ([i32; 3], u8);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+}
+
+#[allow(clippy::type_complexity)]
+#[optimize(speed)]
+pub struct VoxelVolumeIter<'a>(
+    Zip<
+        BoxIter<i32>,
+        FlatMap<Copied<ArrayChunks<'a, u8, 2>>, Take<Repeat<u8>>, fn([u8; 2]) -> Take<Repeat<u8>>>,
+    >,
+);
+
+#[optimize(speed)]
+impl<'a> VoxelVolumeIter<'a> {
+    fn new(voxel_data: &'a Voxels<'a>) -> Self {
+        Self::new_from_parts(&voxel_data.size, voxel_data.palette_index_runs.as_ref())
+    }
+
+    #[allow(clippy::cast_possible_wrap)]
+    #[optimize(speed)]
+    fn new_from_parts(size: &'a [u32; 3], compressed_palette_indices: &'a [u8]) -> Self {
+        VoxelVolumeIter(
+            BoxIter::new(size.map(|dim| dim as i32), [0, 1, 2]).zip(
+                compressed_palette_indices
+                    .array_chunks::<2>()
+                    .copied()
+                    .flat_map(flat_map_voxel_data_chunk as fn([u8; 2]) -> Take<Repeat<u8>>),
+            ),
+        )
+    }
+}
+
+impl<'a> Iterator for VoxelVolumeIter<'a> {
     type Item = ([i32; 3], u8);
 
     fn next(&mut self) -> Option<Self::Item> {

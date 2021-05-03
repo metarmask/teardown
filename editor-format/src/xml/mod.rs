@@ -6,13 +6,14 @@ use quick_xml::{
     Writer,
 };
 use teardown_bin_format::{
-    BoundaryVertex, Entity, EntityKind, Joint, JointKind, Shape, Tags, Voxels,
+    BoundaryVertex, Entity, EntityKind, Joint, JointKind, Shape, Tags, Transform,
 };
 
 use crate::{
     hash, quaternion_to_euler,
+    vox::{self, transform_shape, VoxelsPart},
     xml::attrs::{flatten, join_as_strings, ToXMLAttributes},
-    PaletteMapping, Result, SceneWriter, WriteEntityContext, XMLResult,
+    Result, SceneWriter, WriteEntityContext, XMLResult,
 };
 pub mod attrs;
 
@@ -33,11 +34,7 @@ impl WriteXML for &[BoundaryVertex] {
 }
 
 impl SceneWriter<'_> {
-    pub(crate) fn xml(
-        &self,
-        entity_voxels: HashMap<u32, Voxels>,
-        palette_mappings: Vec<PaletteMapping>,
-    ) -> Result<()> {
+    pub(crate) fn xml(&self, vox_context: vox::Context) -> Result<()> {
         let mut xml_file = File::create(self.mod_dir.join(format!("{}.xml", &self.name)))?;
         let mut xml_writer = Writer::new(&mut xml_file);
         #[rustfmt::skip]
@@ -73,8 +70,7 @@ impl SceneWriter<'_> {
         ))?;
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         let mut write_entity_context = WriteEntityContext {
-            entity_voxels,
-            palette_mappings,
+            vox: vox_context,
             scene: &self.scene,
             writer: &mut xml_writer,
         };
@@ -111,27 +107,67 @@ impl WriteEntityContext<'_, &mut File> {
             ),
             ("density", shape.density.to_string()),
             ("strength", shape.strength.to_string()),
+            /* ("collide", ),
+             * ("prop", ) */
         ];
         if shape.voxels.palette_index_runs.is_empty() {
             kind_attrs.push(("hidden_", true.to_string()))
         }
-        if let Some(palette_mapping) = self.palette_mappings.get(shape.palette as usize) {
-            kind_attrs.push((
-                "file",
-                format!(
-                    "hash/{}.vox",
-                    hash::n_to_str(hash::compute_n(palette_mapping.materials_as_ref()))
-                ),
-            ))
-        } else {
-            eprintln!("could not get palette mapping for {}", shape.palette);
-        }
-        if let Some(entity_voxels) = self.entity_voxels.get(&entity.handle) {
-            kind_attrs.push(("object", hash::n_to_str(hash::compute_n(entity_voxels))));
+        let mut compound = false;
+        if let Some(voxels_parts) = self.vox.shape_voxels_parts.get(&entity.handle) {
+            if voxels_parts.len() == 1 {
+                if let Some(palette_mapping) = self.vox.palette_mappings.get(shape.palette as usize)
+                {
+                    kind_attrs.push((
+                        "file",
+                        format!(
+                            "hash/{}.vox",
+                            hash::n_to_str(hash::compute_n(palette_mapping.materials_as_ref()))
+                        ),
+                    ))
+                } else {
+                    eprintln!("could not get palette mapping for {}", shape.palette);
+                }
+                kind_attrs.push((
+                    "object",
+                    hash::n_to_str(hash::compute_n(&voxels_parts[0].voxels)),
+                ));
+            } else {
+                compound = true;
+            }
         } else {
             eprintln!("could not get entity voxels for {}", entity.handle)
         }
-        ("vox", kind_attrs)
+        (if compound { "compound" } else { "vox" }, kind_attrs)
+    }
+
+    pub(crate) fn write_compound_child(
+        writer: &mut Writer<&mut File>,
+        voxels_part: &VoxelsPart,
+        file_attr: (&str, &str),
+    ) -> XMLResult<()> {
+        let mut transform_attrs = transform_shape(
+            &Transform {
+                pos: voxels_part.relative_pos.map(|x| x as f32 * 0.1),
+                rot: [0., 0., 0., 1.],
+            },
+            voxels_part.voxels.size,
+        )
+        .to_xml_attrs();
+        let pos_attr_value = transform_attrs.remove(0).1;
+        let rot_attr_value = transform_attrs.remove(0).1;
+        let start = BytesStart::owned_name("vox");
+        writer.write_event(&Event::Start(start.clone().with_attributes(vec![
+            ("pos", pos_attr_value.as_str()),
+            ("rot", rot_attr_value.as_str()),
+            file_attr,
+            (
+                "object",
+                &hash::n_to_str(hash::compute_n(&voxels_part.voxels)),
+            ),
+        ])))?;
+        writer.write_event(&Event::End(start.to_end()))?;
+        Ok(())
     }
 
     pub(crate) fn joint_xml(&self, joint: &Joint) -> (&'static str, Vec<(&'static str, String)>) {

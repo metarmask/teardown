@@ -9,7 +9,6 @@ pub mod vox;
 mod tests;
 
 use std::{
-    collections::HashMap,
     f32::consts::TAU,
     fmt::Debug,
     fs::File,
@@ -27,14 +26,12 @@ use quick_xml::{
     events::{BytesStart, Event},
     Writer,
 };
-use teardown_bin_format::{
-    Entity, EntityKind, EntityKindVariants, Joint, Rope, Scene, Transform, Voxels,
-};
+use teardown_bin_format::{Entity, EntityKind, EntityKindVariants, Joint, Rope, Scene, Transform};
 use thiserror::Error;
 
 use crate::{
     util::IntoFixedArray,
-    vox::{transform_shape, PaletteMapping},
+    vox::transform_shape,
     xml::{
         attrs::{join_as_strings, ToXMLAttributes},
         tags_to_string, WriteXML,
@@ -62,8 +59,7 @@ pub struct SceneWriter<'a> {
 
 impl SceneWriter<'_> {
     pub fn write_scene(&self) -> Result<()> {
-        let (entity_voxels, palette_mappings) = self.write_vox()?;
-        self.xml(palette_mappings, entity_voxels)?;
+        self.xml(self.write_vox()?)?;
         Ok(())
     }
 
@@ -73,13 +69,13 @@ impl SceneWriter<'_> {
 }
 
 pub(crate) struct WriteEntityContext<'a, W: Write> {
-    palette_mappings: Vec<PaletteMapping<'a>>,
-    entity_voxels: HashMap<u32, Voxels<'a>>,
+    vox: vox::Context<'a>,
     scene: &'a Scene<'a>,
     writer: &'a mut Writer<W>,
 }
 
 impl WriteEntityContext<'_, &mut File> {
+    #[allow(clippy::too_many_lines)]
     pub fn write_entity_xml(
         &mut self,
         entity: &Entity,
@@ -181,6 +177,24 @@ impl WriteEntityContext<'_, &mut File> {
                     }
                 }
             }
+            EntityKind::Shape(shape) => {
+                if let Some(voxels_parts) = self.vox.shape_voxels_parts.get(&entity.handle) {
+                    if voxels_parts.len() > 1 {
+                        if let Some(palette_mapping) =
+                            self.vox.palette_mappings.get(shape.palette as usize)
+                        {
+                            let file_attr_value = format!(
+                                "hash/{}.vox",
+                                hash::n_to_str(hash::compute_n(palette_mapping.materials_as_ref()))
+                            );
+                            let file_attr = ("file", file_attr_value.as_str());
+                            for voxels_part in voxels_parts {
+                                Self::write_compound_child(self.writer, voxels_part, file_attr)?;
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         self.writer.write_event(Event::End(end))?;
@@ -272,10 +286,11 @@ pub(crate) fn corrected_transform(parent: Option<&Entity>) -> Option<Transform> 
         } else {
             parent.transform().map(|transform: &Transform| {
                 if let EntityKind::Shape(shape) = &parent.kind {
-                    transform_shape(&transform, shape.voxels.size)
-                } else {
-                    transform.clone()
+                    if shape.voxels.size.iter().all(|&dim| dim <= 256) {
+                        return transform_shape(&transform, shape.voxels.size);
+                    }
                 }
+                transform.clone()
             })
         }
     })

@@ -14,7 +14,7 @@ use anyhow::bail;
 use nalgebra::{UnitQuaternion, Vector3};
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use teardown_bin_format::{
-    EntityKind, Material, MaterialKind, PaletteIndex, Rgba, Transform, Voxels,
+    BoxIter, EntityKind, Material, MaterialKind, PaletteIndex, Rgba, Transform, Voxels,
 };
 use vox::semantic::{
     Material as VoxMaterial, MaterialKind as VoxMaterialKind, Model, Node, VoxFile, Voxel,
@@ -396,8 +396,133 @@ pub(crate) fn convert_material(material: &Material) -> VoxMaterial {
     vox_mat
 }
 
+/// Partial result of Voxels being split
+pub(crate) struct VoxelsPart<'a> {
+    pub relative_pos: [u32; 3],
+    pub voxels: Voxels<'a>,
+}
+
+fn run_length_encode(mut byte_iter: impl Iterator<Item = u8>) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    let mut n: u8 = 0;
+    let mut old = if let Some(first) = byte_iter.next() {
+        first
+    } else {
+        return Vec::new();
+    };
+    for value in byte_iter {
+        if old == value {
+            if n == 255 {
+                encoded.push(n);
+                encoded.push(value);
+                n = 0;
+            } else {
+                n += 1;
+            }
+        } else {
+            encoded.push(n);
+            encoded.push(old);
+            n = 0;
+            old = value;
+        }
+    }
+    encoded.push(n);
+    encoded.push(old);
+    encoded
+}
+
+#[test]
+fn test_run_length_encode() {
+    assert_eq!(
+        run_length_encode([1, 1, 1, 1_u8].iter().copied()).as_ref(),
+        [3, 1_u8]
+    );
+    assert_eq!(run_length_encode([1_u8].iter().copied()).as_ref(), [
+        0, 1_u8
+    ]);
+    assert_eq!(run_length_encode(iter::empty()), [] as [u8; 0]);
+    assert_eq!(run_length_encode([1_u8; 256].iter().copied()), [255, 1_u8]);
+    assert_eq!(run_length_encode([2_u8; 257].iter().copied()), [
+        255, 2, 0, 2_u8
+    ]);
+    assert_eq!(
+        run_length_encode([0_u8; 257].iter().chain([1_u8; 257].iter()).copied()),
+        [255, 0, 0, 0, 255, 1, 0, 1_u8]
+    );
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
+fn split_voxels<const MAX: usize>(voxels: Voxels) -> Vec<VoxelsPart> {
+    let max = MAX as i32;
+    if voxels.size.iter().any(|&dim| dim > MAX as u32) {
+        let size_unsigned = voxels.size;
+        let size: [i32; 3] = size_unsigned.map(|dim| dim as i32);
+        let mut part_map = HashMap::<[i32; 3], ([i32; 3], Vec<u8>)>::new();
+
+        let part_map_dim_lens: [i32; 3] = size.map(|dim| dim / max + 1);
+        let dim_size_left: [i32; 3] = size.map(|dim| dim % max);
+        println!("size: {:?}", size);
+        println!("part_map_dim_lens: {:?}", part_map_dim_lens);
+        println!("dim_size_left: {:?}", dim_size_left);
+        for xyz in BoxIter::new(part_map_dim_lens, [0, 1, 2]) {
+            let part_size = xyz
+                .iter()
+                .enumerate()
+                .map(|(dim_i, &dim)| {
+                    if dim == part_map_dim_lens[dim_i] - 1 {
+                        dim_size_left[dim_i]
+                    } else {
+                        max
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_fixed();
+            let part_size_u = part_size.map(|dim| dim as usize);
+            part_map.insert(
+                xyz,
+                (
+                    part_size,
+                    Vec::with_capacity(part_size_u[0] * part_size_u[1] * part_size_u[2]),
+                ),
+            );
+        }
+        for (pos, palette_i) in voxels.iter_volume() {
+            let (_, palette_indices) = part_map.get_mut(&pos.map(|dim| dim / max)).unwrap();
+            palette_indices.push(palette_i);
+        }
+        part_map
+            .into_iter()
+            .map(|(relative_pos, part)| VoxelsPart {
+                relative_pos: relative_pos.map(|dim| (dim * max) as u32),
+                voxels: Voxels {
+                    palette_index_runs: Cow::Owned(run_length_encode(part.1.into_iter())),
+                    size: part.0.map(|dim| dim as u32),
+                },
+            })
+            .collect()
+    } else {
+        let a = VoxelsPart {
+            voxels: Voxels {
+                palette_index_runs: Cow::Owned(voxels.palette_index_runs.into_owned()),
+                size: voxels.size,
+            },
+            relative_pos: [0, 0, 0],
+        };
+        vec![a]
+    }
+}
+
+pub(crate) struct Context<'a> {
+    pub palette_mappings: Vec<PaletteMapping<'a>>,
+    pub shape_voxels_parts: HashMap<u32, Vec<VoxelsPart<'a>>>,
+}
+
 impl SceneWriter<'_> {
-    pub(crate) fn write_vox(&self) -> Result<(Vec<PaletteMapping<'_>>, HashMap<u32, Voxels<'_>>)> {
+    pub(crate) fn write_vox(&self) -> Result<Context> {
         fs::create_dir_all(&self.vox_store.unwrap_lock().hash_vox_dir)?;
         fs::create_dir_all(&self.mod_dir)?;
         if let Err(err) = fs::create_dir(&self.level_dir()) {
@@ -421,7 +546,7 @@ impl SceneWriter<'_> {
         let mut palette_voxel_data: Vec<Vec<Voxels>> = iter::repeat(Vec::new())
             .take(self.scene.palettes.len())
             .collect();
-        let mut entity_voxels: HashMap<u32, Voxels> = HashMap::new();
+        let mut shape_voxels_parts: HashMap<u32, Vec<VoxelsPart>> = HashMap::new();
         for entity in self.scene.iter_entities() {
             if let EntityKind::Shape(shape) = &entity.kind {
                 let mut voxels: Voxels = shape.voxels.clone();
@@ -429,7 +554,7 @@ impl SceneWriter<'_> {
                     palette_mappings.get(shape.palette as usize)
                 {
                     let indices_orig_to_new = remapped.1;
-                    let mut palette_index_runs = voxels.palette_index_runs.clone().into_owned();
+                    let mut palette_index_runs = voxels.palette_index_runs.into_owned();
                     for [_n_times, palette_index] in palette_index_runs.array_chunks_mut() {
                         if *palette_index != 0 {
                             *palette_index = indices_orig_to_new[*palette_index as usize];
@@ -437,11 +562,16 @@ impl SceneWriter<'_> {
                     }
                     voxels.palette_index_runs = Cow::Owned(palette_index_runs);
                 }
+                let voxels_parts = split_voxels::<256>(voxels);
                 palette_voxel_data
                     .get_mut(shape.palette as usize)
                     .expect("non-existent palette")
-                    .push(voxels.clone());
-                entity_voxels.insert(entity.handle, voxels);
+                    .extend(
+                        voxels_parts
+                            .iter()
+                            .map(|voxel_part| voxel_part.voxels.clone()),
+                    );
+                shape_voxels_parts.insert(entity.handle, voxels_parts);
             }
         }
         #[rustfmt::skip]
@@ -457,7 +587,10 @@ impl SceneWriter<'_> {
                     },
                 )
             });
-        Ok((palette_mappings, entity_voxels))
+        Ok(Context {
+            palette_mappings,
+            shape_voxels_parts,
+        })
     }
 }
 
