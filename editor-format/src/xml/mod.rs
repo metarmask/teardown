@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Write};
+use std::{fs::File, io::Write};
 
 use nalgebra::{Isometry3, Point3};
 use quick_xml::{
