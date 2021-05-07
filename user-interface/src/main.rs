@@ -1,4 +1,8 @@
 #![feature(stmt_expr_attributes)]
+#[cfg(custom_after_load)]
+mod after_load;
+#[cfg(custom_after_load)]
+use after_load::after_load;
 #[cfg(feature = "graphical")]
 mod graphical;
 
@@ -53,6 +57,8 @@ enum AfterLoadCmd {
         level_name: String,
     },
     PrintEnv,
+    #[cfg(custom_after_load)]
+    IgnoredCode,
 }
 
 #[derive(StructOpt)]
@@ -210,6 +216,10 @@ fn main() -> Result<()> {
                 }
                 AfterLoadCmd::PrintEnv => {
                     println!("{:#?}", scene.environment);
+                }
+                #[cfg(custom_after_load)]
+                AfterLoadCmd::IgnoredCode => {
+                    after_load(scene)?;
                 }
             }
         }
