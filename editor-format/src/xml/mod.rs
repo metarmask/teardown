@@ -40,7 +40,7 @@ impl SceneWriter<'_> {
         #[rustfmt::skip]
         let start = BytesStart::owned_name("scene").with_attributes(
             vec![
-                ("version", "0.6.2"),
+                ("version", "0.7.4"),
                 ("shadowVolume", &join_as_strings(self.scene.shadow_volume.iter())),
             ].into_iter());
         let end = start.to_end();
