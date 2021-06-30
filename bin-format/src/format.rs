@@ -13,7 +13,7 @@ use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
-const VERSION: [u8; 3] = [0, 7, 1];
+const VERSION: [u8; 3] = [0, 7, 4];
 
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
@@ -474,12 +474,13 @@ pub struct Script<'a> {
     pub params: Registry<'a>,
     pub last_update: f32,
     pub time: f32,
-    pub z_u8_4: [u8; 4],
+    pub z1_u8_4: [u8; 4],
     pub table: LuaTable<'a>,
     #[structr(len = "u32")]
     pub entity_handles: Vec<u32>,
     #[structr(len = "u32")]
     pub sounds: Vec<ScriptSound<'a>>,
+    pub z2_u8_4: u32
 }
 
 #[derive(Debug, Clone, Parse)]
