@@ -1,8 +1,6 @@
 #![feature(
-    array_map,
     array_chunks,
     bool_to_option,
-    format_args_capture,
     optimize_attribute
 )]
 use std::{

@@ -13,7 +13,7 @@ use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
-const VERSION: [u8; 3] = [0, 7, 4];
+const VERSION: [u8; 3] = [0, 9, 0];
 
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
@@ -29,10 +29,10 @@ pub struct Scene<'a> {
     pub spawnpoint: Transform,
     pub player: Player,
     pub environment: Environment<'a>,
-    pub z_f32_8: [f32; 8],
-    pub z_u8: u8,
+    pub z_f32: f32,
     #[structr(len = "u32")]
     pub boundary_vertices: Vec<BoundaryVertex>,
+    pub z_f32_2_2: [[f32; 2]; 2],
     #[structr(len = "u32")]
     pub fires: Vec<Fire>,
     #[structr(len = "u32")]
@@ -114,6 +114,8 @@ pub mod joint {
         pub limits: [f32; 2],
         pub z_f32_2: [f32; 2],
         pub size: f32,
+        pub z_u8: u8,
+        pub z_u32_2: [[u8; 4]; 2],
         #[structr(
             parse = "Ok(if kind == JointKind::Rope { Some(parser.parse()?) } else { None })"
         )]
@@ -351,6 +353,9 @@ pub struct Vehicle<'a> {
     // pub what: [u8; 4],
     #[structr(len = "u32")]
     pub vitals: Vec<Vital>,
+    pub z2_f32: f32,
+    pub z_u32_2: u32,
+    pub z3_u8: u8,
     #[structr(parse = "guess_arm_rot(parser)")]
     pub arm_rot: Option<f32>,
 }
@@ -409,6 +414,7 @@ pub struct Water {
     pub ripple: f32,
     pub motion: f32,
     pub foam: f32,
+    pub color: Rgba,
     #[structr(len = "u32")]
     pub boundary_vertices: Vec<BoundaryVertex>,
 }
@@ -502,12 +508,15 @@ pub mod environment {
         pub ambience: Sound<'a>,
         pub slippery: f32,
         pub lights_fog_scale: f32,
+        pub snow: Snow,
+        pub wind: [f32; 3],
     }
 
     #[derive(Debug, Clone, Parse)]
     pub struct Skybox<'a> {
         pub texture: &'a str,
         pub color_intensity: Rgba,
+        pub brightness: f32,
         /// In radians
         pub rotation: f32,
         pub sun: Sun,
@@ -544,6 +553,15 @@ pub mod environment {
         pub puddle_coverage: f32,
         pub puddle_size: f32,
         pub rain: f32,
+    }
+
+    #[derive(Debug, Clone, Parse)]
+    pub struct Snow {
+        pub direction: [f32; 3],
+        pub spread: f32,
+        pub amount: f32,
+        pub speed: f32,
+        pub on_ground: bool,
     }
 }
 pub use environment::Environment;
@@ -584,8 +602,7 @@ pub struct Body {
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
     pub dynamic: bool,
-    pub active: bool,
-    pub z_u8: u8,
+    pub flags: u8,
 }
 
 #[derive(Debug, Clone, Parse)]
@@ -698,13 +715,13 @@ impl fmt::Debug for Rgb {
 #[derive(Debug, Clone, Parse)]
 pub struct Player {
     pub z_i32_3: [i32; 3],
-    pub z_f32: [f32; 7],
+    pub z_f32: [f32; 8],
     pub transform: Transform,
     pub yaw: f32,
     pub pitch: f32,
     pub velocity: [f32; 3],
     pub health: f32,
-    pub z_f32_2: [f32; 2],
+    pub z_f32_2: [f32; 4],
 }
 
 #[derive(Clone, PartialEq, Parse)]
@@ -713,6 +730,7 @@ pub enum LuaValue<'a> {
     Number(f64),
     Table(LuaTable<'a>),
     String(&'a str),
+    Reference(u32)
 }
 
 // Taken from derive(Hash), but modified to take hash bytes of double.
@@ -735,6 +753,10 @@ impl<'a> Hash for LuaValue<'a> {
                 mem::discriminant(self).hash(state);
                 v.hash(state);
             }
+            LuaValue::Reference(v) => {
+                mem::discriminant(self).hash(state);
+                v.hash(state);
+            }
         }
     }
 }
@@ -749,6 +771,7 @@ impl fmt::Debug for LuaValue<'_> {
             LuaValue::Number(ref v) => v,
             LuaValue::Table(ref v) => v,
             LuaValue::String(ref v) => v,
+            LuaValue::Reference(ref v) => v,
         };
         dbg.fmt(f)
     }
@@ -764,6 +787,7 @@ impl<'p> Parse<'p> for LuaValue<'p> {
             3 => LuaValue::Number(parser.parse()?),
             4 => LuaValue::String(parser.parse()?),
             5 => LuaValue::Table(parser.parse()?),
+            0xFFFFFFFB => LuaValue::Reference(parser.parse()?),
             other => {
                 return Err(Parser::error(ParseErrorKind::NoReprIntMatch(u64::from(
                     other,
@@ -974,6 +998,7 @@ pub struct Shape<'a> {
     pub texture_tile: u32,
     // Texture offset?
     pub starting_world_position: [f32; 3],
+    pub blend_texture: f32,
     pub texture_weight: f32,
     pub z_f32: f32,
     pub z1_u8: u8,

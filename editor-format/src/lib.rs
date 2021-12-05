@@ -1,4 +1,4 @@
-#![feature(array_map, array_chunks, stmt_expr_attributes)]
+#![feature(array_chunks, stmt_expr_attributes)]
 mod hash;
 mod xml;
 // Public
