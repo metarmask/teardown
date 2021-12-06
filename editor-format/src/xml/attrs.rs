@@ -14,7 +14,7 @@ use quick_xml::{
     Writer,
 };
 use teardown_bin_format::{
-    environment::{self, Fog, Skybox, Sun},
+    environment::{self, Fog, Skybox, Sun, Snow},
     Body, Entity, Environment, Exposure, Joint, JointKind, Light, LightKind, Rope, Script, Sound,
     Transform, Vehicle, Water, Wheel,
 };
@@ -135,6 +135,16 @@ impl ToXMLAttributes for environment::Water {
     }
 }
 
+impl ToXMLAttributes for Snow {
+    fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("snowdir", join_as_strings(self.direction.iter().copied().chain(iter::once(self.spread)))),
+            ("snowamount", join_as_strings([self.amount, self.speed])),
+            ("snowonground", self.on_ground.to_string()),
+        ]
+    }
+}
+
 impl ToXMLAttributes for (&'static str, Sound<'_>) {
     fn to_xml_attrs(&self) -> Vec<(&'static str, String)> {
         vec![(
@@ -168,6 +178,7 @@ impl<'a> WriteXML for Environment<'a> {
                         ),
                         ("slippery", self.slippery.to_string()),
                     ],
+                    self.snow.to_xml_attrs(),
                     self.fog.to_xml_attrs(),
                 ])
                 .iter()
