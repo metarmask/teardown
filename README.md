@@ -24,11 +24,7 @@ Use Rust Nightly. To run the graphical interface, use:
     cargo run --release --package teardown-converter
 
 ## Known issues
-* Wheels are placed at the centers of vehicle bodies.
 * Specific attributes of the following entities are not added to the editor XML:
-  * Wheel
-  * Joint (not rope joints, though)
   * Screen
   * Trigger
-* Shapes which cannot fit in a MagicaVoxel object are truncated.
 * Shapes with more of a certain material kind than can fit in its designated area of the MagicaVoxel palette will have some incorrect materials.
