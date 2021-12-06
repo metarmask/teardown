@@ -105,6 +105,10 @@ impl WriteEntityContext<'_, &mut File> {
                 "texture",
                 format!("{} {}", shape.texture_tile, shape.texture_weight),
             ),
+            (
+                "blendtexture",
+                format!("{} {}", shape.blend_texture_tile, shape.blend_texture_weight),
+            ),
             ("density", shape.density.to_string()),
             ("strength", shape.strength.to_string()),
             /* ("collide", ),

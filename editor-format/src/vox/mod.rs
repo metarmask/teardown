@@ -187,7 +187,7 @@ fn iter_material_kinds() -> impl Iterator<Item = MaterialKind> {
         MaterialKind::Plastic,
         MaterialKind::HardMetal,
         MaterialKind::HardMasonry,
-        MaterialKind::Unknown13,
+        MaterialKind::Snow,
         MaterialKind::Unphysical,
     ]
     .iter()
@@ -219,7 +219,8 @@ fn range_for_material_kind(material_kind: MaterialKind) -> Option<[u8; 2]> {
         MaterialKind::Plastic     => [153, 153+8*2-1],
         MaterialKind::HardMetal   => [169, 169+8*1-1],
         MaterialKind::HardMasonry => [177, 177+8*1-1],
-        MaterialKind::Unknown13   => [185, 185+39   ],
+        MaterialKind::Snow        => [185, 185+8*1-1],
+        MaterialKind::Unknown13   => [193, 193+8*2-1],
         MaterialKind::Unphysical  => [225, 225+8*2-1],
         MaterialKind::None        => return None,
     })

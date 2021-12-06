@@ -194,7 +194,9 @@ pub enum MaterialKind {
     HardMetal = 11,
     HardMasonry = 12,
     Unknown13 = 13,
-    Unphysical = 14,
+    Snow = 14,
+    // Maybe?
+    Unphysical = 15
 }
 
 impl Default for MaterialKind {
@@ -995,11 +997,12 @@ pub struct Shape<'a> {
     pub z_u8_4: [u8; 4],
     pub density: f32,
     pub strength: f32,
-    pub texture_tile: u32,
+    pub blend_texture_tile: u16,
+    pub texture_tile: u16,
+    pub blend_texture_weight: f32,
+    pub texture_weight: f32,
     // Texture offset?
     pub starting_world_position: [f32; 3],
-    pub blend_texture: f32,
-    pub texture_weight: f32,
     pub z_f32: f32,
     pub z1_u8: u8,
     pub z2_u8: u8,
