@@ -239,12 +239,16 @@ impl MainView {
 
     fn update(&mut self, message: MainMessage) -> Command<MainMessage> {
         match message {
-            MainMessage::Level(level, message) => self
-                .levels
-                .get_mut(level)
-                .expect("no level")
-                .update(&self.dirs, &self.vox_store, message)
-                .map(move |what| MainMessage::Level(level, what)),
+            MainMessage::Level(level, message) => {
+                if let LevelMessage::Error(error) = message {
+                    return Command::perform(async { MainMessage::Error(error) }, |a| a);
+                }
+                self.levels
+                    .get_mut(level)
+                    .expect("no level")
+                    .update(&self.dirs, &self.vox_store, message)
+                    .map(move |what| MainMessage::Level(level, what))
+            }
             MainMessage::SelectLevel(level) => {
                 let already_selected = self.selected_level == Some(level);
                 self.selected_level = Some(level);
