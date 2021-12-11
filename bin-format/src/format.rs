@@ -103,7 +103,8 @@ pub mod joint {
         pub kind: JointKind,
         pub shape_handles: [u32; 2],
         pub shape_positions: [[f32; 3]; 2],
-        pub hinge_or_prismatic_rot: [[f32; 3]; 2],
+        /// Used by hinge and prismatic joints.
+        pub shape_axes: [[f32; 3]; 2],
         pub connected: bool,
         pub collisions: bool,
         pub rot_strength: f32,
@@ -112,7 +113,7 @@ pub mod joint {
         /// Angle limits in radians for hinges, distance limits in meters for
         /// prismatic joints.
         pub limits: [f32; 2],
-        pub z_f32_2: [f32; 2],
+        pub z_f32_2_hinge: [f32; 2],
         pub size: f32,
         #[structr(
             parse = "Ok(if kind == JointKind::Rope { Some(parser.parse()?) } else { None })"

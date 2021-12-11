@@ -1,6 +1,6 @@
-use std::{fs::File, io::Write};
+use std::{f32::consts::TAU, fs::File, io::Write};
 
-use nalgebra::{Isometry3, Point3};
+use nalgebra::{Isometry3, Point3, Rotation3, UnitQuaternion};
 use quick_xml::{
     events::{BytesStart, Event},
     Writer,
@@ -10,7 +10,7 @@ use teardown_bin_format::{
 };
 
 use crate::{
-    hash, quaternion_to_euler,
+    hash, quaternion_to_euler, rot_matrix_to_euler,
     vox::{self, transform_shape, VoxelsPart},
     xml::attrs::{flatten, join_as_strings, ToXMLAttributes},
     Result, SceneWriter, WriteEntityContext, XMLResult,
@@ -190,10 +190,23 @@ impl WriteEntityContext<'_, &mut File> {
                     relative_pos[2],
                 ));
                 attrs.push(("pos", join_as_strings(pos.coords.iter())));
-                attrs.push((
-                    "rot",
-                    join_as_strings(quaternion_to_euler(joint.ball_rot).iter()),
-                ));
+                if joint.kind == JointKind::Ball {
+                    attrs.push((
+                        "rot",
+                        join_as_strings(quaternion_to_euler(joint.ball_rot).iter()),
+                    ));
+                } else {
+                    let mut rot = Rotation3::new(
+                        [
+                            joint.shape_axes[1][0] / TAU,
+                            joint.shape_axes[1][1] / TAU,
+                            joint.shape_axes[1][2] / TAU,
+                        ]
+                        .into(),
+                    );
+                    rot.renormalize();
+                    attrs.push(("rot", join_as_strings(rot_matrix_to_euler(rot).iter())));
+                }
             }
             ("joint", attrs)
         }

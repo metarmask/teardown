@@ -20,7 +20,7 @@ use std::{
 use ::vox::semantic::SemanticError as VoxError;
 use anyhow::Result;
 use derive_builder::Builder;
-use nalgebra::{Isometry3, Point3, Quaternion, UnitQuaternion};
+use nalgebra::{Isometry3, Point3, Quaternion, Rotation, Rotation3, UnitQuaternion};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{
     events::{BytesStart, Event},
@@ -297,12 +297,18 @@ pub(crate) fn corrected_transform(parent: Option<&Entity>) -> Option<Transform> 
 }
 
 /// YZX euler angles
-fn quaternion_to_euler(rot: [f32; 4]) -> [f32; 3] {
-    let m = UnitQuaternion::from_quaternion(Quaternion::from_parts(
+#[must_use]
+pub fn quaternion_to_euler(rot: [f32; 4]) -> [f32; 3] {
+    rot_matrix_to_euler(
+        UnitQuaternion::from_quaternion(Quaternion::from_parts(
         rot[3],
         Point3::from_slice(&rot[0..3]).coords,
     ))
-    .to_rotation_matrix();
+        .to_rotation_matrix(),
+    )
+}
+
+fn rot_matrix_to_euler(m: Rotation3<f32>) -> [f32; 3] {
     if m[(1, 0)] < 1.0 {
         if m[(1, 0)] > -1.0 {
             [
