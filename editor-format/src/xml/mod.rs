@@ -110,6 +110,9 @@ impl WriteEntityContext<'_, &mut File> {
             /* ("collide", ),
              * ("prop", ) */
         ];
+        if shape.voxel_scaling != 0.1 {
+            kind_attrs.push(("scale", (shape.voxel_scaling * 10.0).to_string()))
+        }
         if shape.voxels.palette_index_runs.is_empty() {
             kind_attrs.push(("hidden_", true.to_string()))
         }
