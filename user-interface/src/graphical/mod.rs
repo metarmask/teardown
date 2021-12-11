@@ -166,17 +166,17 @@ impl Level {
                     }
                 } else {
                     panic!("Arc::try_unwrap")
-                })
+                });
             }
             LevelMessage::XMLConverted(scene) => {
                 self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) {
                     ok
                 } else {
                     panic!("Arc::try_unwrap")
-                })
+                });
             }
             LevelMessage::Error(error) => {
-                panic!("{:?}", error)
+                panic!("{:?}", error);
             }
         }
 
@@ -405,7 +405,7 @@ impl Application for App {
             App::Main(main_view) => main_view.view().map(AppMessage::Main),
             App::SetDirectories(SetDirectoriesView { text_input , dirs }) => Element::new(Column::with_children(vec![
                 Element::new(Row::with_children(vec![
-                    Element::new(TextInput::new(text_input, "test", &dirs.main.to_string_lossy(), |s| AppMessage::SetDirectories(Directories::default())))
+                    Element::new(TextInput::new(text_input, "test", &dirs.main.to_string_lossy(), |_| AppMessage::SetDirectories(Directories::default())))
                 ]))
             ])),
             App::Error(error) => Text::new(error.clone()).into(),

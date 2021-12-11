@@ -35,7 +35,7 @@ fn read_bytes<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Error> {
 }
 
 fn decompress_if_needed(bytes: Vec<u8>) -> Result<Vec<u8>, io::Error> {
-    Ok(if bytes.starts_with(&Scene::MAGIC) {
+    Ok(if bytes.starts_with(Scene::MAGIC) {
         bytes
     } else {
         let mut new_bytes = Vec::with_capacity(bytes.len());

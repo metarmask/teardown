@@ -270,7 +270,7 @@ fn get_extra_library_dirs(main_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut libraries = Vec::new();
     for (key, value) in entries.iter() {
         if key.parse::<i32>().is_ok() {
-            libraries.push(value.as_str().context(VDFErr)?.into())
+            libraries.push(value.as_str().context(VDFErr)?.into());
         }
     }
     Ok(libraries)

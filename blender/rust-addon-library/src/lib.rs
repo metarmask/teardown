@@ -1,4 +1,4 @@
-#![feature(array_map, array_chunks)]
+#![feature(array_chunks)]
 use std::{
     collections::{hash_map::DefaultHasher, BTreeMap, HashMap, HashSet},
     f32::consts::PI,
@@ -401,7 +401,7 @@ impl<'a> ImportContext<'a> {
             .progress_with(shape_progress)
             .map(|(entity, shape)| (
                 entity.handle,
-                Self::create_mesh_for_shape(&shape, &parsed.palettes),
+                Self::create_mesh_for_shape(shape, &parsed.palettes),
             ))
             .collect::<HashMap<_, _>>();
 

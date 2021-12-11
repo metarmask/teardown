@@ -21,7 +21,7 @@ pub struct Scene<'a> {
     magic: [u8; 5],
     #[structr(parse = "{ let v = parser.parse()?;
             if v != VERSION {
-                println!(\"Warning. Version mismatch: {:?} != {:?}\", v, VERSION) } Ok(v) }")]
+                println!(\"Warning. Version mismatch: {:?} != {:?}\", v, VERSION) } Ok(v) }";)]
     pub version: [u8; 3],
     pub level: &'a str,
     pub z_bytes4_eq_0: [u8; 4],
@@ -43,7 +43,7 @@ pub struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    pub const MAGIC: &'static [u8] = &[0x54, 0x44, 0x42, 0x49, 0x4e];
+    pub const MAGIC: &'static [u8] = b"TDBIN";
 
     pub fn iter_entities(&'a self) -> impl Iterator<Item = &'a Entity> {
         self.entities.iter().flat_map(Entity::self_and_all_children)
@@ -280,7 +280,7 @@ impl<'a> Entity<'a> {
     #[must_use]
     pub fn self_and_all_children(&self) -> SelfAndChildrenIter<'_> {
         SelfAndChildrenIter {
-            entity: &self,
+            entity: self,
             child_i: 0,
             returned_self: false,
             child_children: None,
@@ -766,6 +766,7 @@ impl<'a> Hash for LuaValue<'a> {
 // Lua tables do not allow NaN as keys
 impl<'a> Eq for LuaValue<'a> {}
 
+#[allow(clippy::ref_binding_to_reference)]
 impl fmt::Debug for LuaValue<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let dbg: &dyn fmt::Debug = match self {
@@ -789,7 +790,7 @@ impl<'p> Parse<'p> for LuaValue<'p> {
             3 => LuaValue::Number(parser.parse()?),
             4 => LuaValue::String(parser.parse()?),
             5 => LuaValue::Table(parser.parse()?),
-            0xFFFFFFFB => LuaValue::Reference(parser.parse()?),
+            0xFF_FF_FF_FB => LuaValue::Reference(parser.parse()?),
             other => {
                 return Err(Parser::error(ParseErrorKind::NoReprIntMatch(u64::from(
                     other,

@@ -325,7 +325,7 @@ impl ToXMLAttributes for Joint {
                         let mut limits = self.limits;
                         if let JointKind::Hinge = self.kind {
                             for angle in &mut limits {
-                                *angle = f32::to_degrees(*angle)
+                                *angle = f32::to_degrees(*angle);
                             }
                         }
                         limits.to_vec().iter()

@@ -1,4 +1,4 @@
-#[allow(clippy::approx_constant, clippy::unreadable_literal)]
+#![allow(clippy::approx_constant, clippy::unreadable_literal, clippy::manual_assert, clippy::semicolon_if_nothing_returned)]
 mod transform_shape {
     use approx::assert_relative_eq;
     use nalgebra::{UnitQuaternion, Vector3};
@@ -254,9 +254,9 @@ mod palette {
         if let PaletteMapping::Remapped(boxed) = remap_materials(&materials) {
             let (remapped, indices_orig_to_new) = boxed.as_ref();
             assert_eq!(remapped[indices_orig_to_new[4] as usize].kind, kind);
-            assert_ne!(remapped[4].kind, kind)
+            assert_ne!(remapped[4].kind, kind);
         } else {
-            panic!("should be remapped")
+            panic!("should be remapped");
         }
     }
 
@@ -280,7 +280,7 @@ mod palette {
             let (remapped, indices_orig_to_new) = boxed.as_ref();
             assert!(!remapped[indices_orig_to_new[1] as usize].replacable);
         } else {
-            panic!("should be remapped")
+            panic!("should be remapped");
         }
     }
 
