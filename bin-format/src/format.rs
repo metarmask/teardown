@@ -998,10 +998,10 @@ pub struct Shape<'a> {
     pub z_u8_4: [u8; 4],
     pub density: f32,
     pub strength: f32,
-    pub blend_texture_tile: u16,
     pub texture_tile: u16,
-    pub blend_texture_weight: f32,
+    pub blend_texture_tile: u16,
     pub texture_weight: f32,
+    pub blend_texture_weight: f32,
     // Texture offset?
     pub starting_world_position: [f32; 3],
     pub z_f32: f32,
