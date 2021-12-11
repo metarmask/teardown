@@ -12,7 +12,7 @@ use std::{
 use anyhow::Result;
 use iced::{
     button, executor, scrollable, Align, Application, Button, Clipboard, Column, Command, Element,
-    Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment,
+    Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment, TextInput, text_input
 };
 use owning_ref::OwningHandle;
 use teardown_bin_format::{parse_file, OwnedScene, Scene};
@@ -340,14 +340,21 @@ impl MainView {
     }
 }
 
+pub struct SetDirectoriesView {
+    text_input: text_input::State,
+    dirs: Directories
+}
+
 pub enum App {
     Main(MainView),
+    SetDirectories(SetDirectoriesView),
     Error(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AppMessage {
     Main(MainMessage),
+    SetDirectories(Directories),
 }
 
 impl Application for App {
@@ -387,13 +394,20 @@ impl Application for App {
                     *error += "\nMainView could not receive a message because of the current error";
                     Command::none()
                 }
+                App::SetDirectories(_) => todo!(),
             },
+            AppMessage::SetDirectories(_) => todo!(),
         }
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
         match self {
             App::Main(main_view) => main_view.view().map(AppMessage::Main),
+            App::SetDirectories(SetDirectoriesView { text_input , dirs }) => Element::new(Column::with_children(vec![
+                Element::new(Row::with_children(vec![
+                    Element::new(TextInput::new(text_input, "test", &dirs.main.to_string_lossy(), |s| AppMessage::SetDirectories(Directories::default())))
+                ]))
+            ])),
             App::Error(error) => Text::new(error.clone()).into(),
         }
     }

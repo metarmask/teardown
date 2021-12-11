@@ -348,8 +348,8 @@ fn find_steam_app(app_id: &str) -> Result<SteamApp> {
     Err(Error::SteamAppNotFound(app_id.to_owned()).into())
 }
 
-#[derive(Debug, Clone)]
-struct Directories {
+#[derive(Debug, Clone, Default)]
+pub struct Directories {
     mods: PathBuf,
     progress: PathBuf,
     main: PathBuf,
