@@ -40,7 +40,7 @@ impl SceneWriter<'_> {
         #[rustfmt::skip]
         let start = BytesStart::owned_name("scene").with_attributes(
             vec![
-                ("version", "0.6.2"),
+                ("version", "0.7.4"),
                 ("shadowVolume", &join_as_strings(self.scene.shadow_volume.iter())),
             ].into_iter());
         let end = start.to_end();
@@ -104,6 +104,10 @@ impl WriteEntityContext<'_, &mut File> {
             (
                 "texture",
                 format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ),
+            (
+                "blendtexture",
+                format!("{} {}", shape.blend_texture_tile, shape.blend_texture_weight),
             ),
             ("density", shape.density.to_string()),
             ("strength", shape.strength.to_string()),

@@ -192,7 +192,7 @@ fn iter_material_kinds() -> impl Iterator<Item = MaterialKind> {
         MaterialKind::Plastic,
         MaterialKind::HardMetal,
         MaterialKind::HardMasonry,
-        MaterialKind::Unknown13,
+        MaterialKind::Snow,
         MaterialKind::Unphysical,
     ]
     .iter()
@@ -212,21 +212,22 @@ fn material_kind_for_index(index: u8) -> MaterialKind {
 
 fn range_for_material_kind(material_kind: MaterialKind) -> Option<[u8; 2]> {
     Some(match material_kind {
-        MaterialKind::Glass => [1, 8],
-        MaterialKind::Foliage => [9, 24],
-        MaterialKind::Dirt => [25, 40],
-        MaterialKind::Rock => [41, 56],
-        MaterialKind::Wood => [57, 72],
-        MaterialKind::Masonry => [73, 104],
-        MaterialKind::Plaster => [105, 120],
-        MaterialKind::Metal => [121, 136],
-        MaterialKind::HeavyMetal => [137, 152],
-        MaterialKind::Plastic => [153, 168],
-        MaterialKind::HardMetal => [169, 176],
-        MaterialKind::HardMasonry => [177, 184],
-        MaterialKind::Unknown13 => [185, 224],
-        MaterialKind::Unphysical => [225, 240],
-        MaterialKind::None => return None,
+        MaterialKind::Glass       => [  1,   1+8*1-1],
+        MaterialKind::Foliage     => [  9,   9+8*2-1],
+        MaterialKind::Dirt        => [ 25,  25+8*2-1],
+        MaterialKind::Rock        => [ 41,  41+8*2-1],
+        MaterialKind::Wood        => [ 57,  57+8*2-1],
+        MaterialKind::Masonry     => [ 73,  73+8*4-1],
+        MaterialKind::Plaster     => [105, 105+8*2-1],
+        MaterialKind::Metal       => [121, 121+8*2-1],
+        MaterialKind::HeavyMetal  => [137, 137+8*2-1],
+        MaterialKind::Plastic     => [153, 153+8*2-1],
+        MaterialKind::HardMetal   => [169, 169+8*1-1],
+        MaterialKind::HardMasonry => [177, 177+8*1-1],
+        MaterialKind::Snow        => [185, 185+8*1-1],
+        MaterialKind::Unknown13   => [193, 193+8*2-1],
+        MaterialKind::Unphysical  => [225, 225+8*2-1],
+        MaterialKind::None        => return None,
     })
 }
 

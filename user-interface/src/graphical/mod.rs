@@ -153,8 +153,17 @@ impl Level {
                 other => self.scene = other,
             },
             LevelMessage::SceneLoaded(scene) => {
-                self.scene = Load::Loaded(if let Ok(ok) = Arc::try_unwrap(scene) {
-                    ok.expect("error loading scene")
+                self.scene = Load::Loaded(if let Ok(scene_result) = Arc::try_unwrap(scene) {
+                    match scene_result {
+                        Ok(scene) => scene,
+                        Err(error) => {
+                            // Let this be caught by Main
+                            return Command::perform(
+                                async move { LevelMessage::Error(Arc::new(anyhow::Error::msg(error))) },
+                                |level_message| level_message,
+                            )
+                        }
+                    }
                 } else {
                     panic!("Arc::try_unwrap")
                 })
@@ -240,15 +249,20 @@ impl MainView {
     fn update(&mut self, message: MainMessage) -> Command<MainMessage> {
         match message {
             MainMessage::Level(level, message) => {
+                // Let this error be caught by App
                 if let LevelMessage::Error(error) = message {
-                    return Command::perform(async { MainMessage::Error(error) }, |a| a);
+                    return Command::perform(
+                        async move { MainMessage::Error(error) },
+                        |result| result,
+                    )
                 }
-                self.levels
-                    .get_mut(level)
-                    .expect("no level")
-                    .update(&self.dirs, &self.vox_store, message)
-                    .map(move |what| MainMessage::Level(level, what))
-            }
+                self
+                .levels
+                .get_mut(level)
+                .expect("no level")
+                .update(&self.dirs, &self.vox_store, message)
+                .map(move |what| MainMessage::Level(level, what))
+            },
             MainMessage::SelectLevel(level) => {
                 let already_selected = self.selected_level == Some(level);
                 self.selected_level = Some(level);

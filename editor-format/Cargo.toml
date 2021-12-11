@@ -1,6 +1,6 @@
 [package]
 name = "teardown-editor-format"
-version = "0.6.1"
+version = "0.7.4"
 edition = "2018"
 
 [dependencies]
