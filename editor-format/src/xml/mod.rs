@@ -101,19 +101,23 @@ impl WriteEntityContext<'_, &mut File> {
         shape: &Shape,
     ) -> (&'static str, Vec<(&'static str, String)>) {
         let mut kind_attrs = vec![
-            (
-                "texture",
-                format!("{} {}", shape.texture_tile, shape.texture_weight),
-            ),
-            (
-                "blendtexture",
-                format!("{} {}", shape.blend_texture_tile, shape.blend_texture_weight),
-            ),
-            ("density", shape.density.to_string()),
-            ("strength", shape.strength.to_string()),
             /* ("collide", ),
              * ("prop", ) */
         ];
+        if shape.texture_tile != 0 {
+            kind_attrs.push((
+                "texture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ));
+        }
+        if shape.blend_texture_tile != 0 {
+            kind_attrs.push((
+                "blendtexture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ));
+        }
+        if shape.density != 1.0 { kind_attrs.push(("density", shape.density.to_string())); }
+        if shape.strength != 1.0 { kind_attrs.push(("strength", shape.strength.to_string())); }
         if shape.voxel_scaling != 0.1 {
             kind_attrs.push(("scale", (shape.voxel_scaling * 10.0).to_string()))
         }
