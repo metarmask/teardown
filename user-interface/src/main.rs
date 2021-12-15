@@ -9,12 +9,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use keyvalues_parser::{Value, Obj};
 use ::vox as vox_format;
 use anyhow::{Context, Result};
 use clap::ArgGroup;
 #[cfg(feature = "graphical")]
 use iced::{Application, Settings};
-use steamy_vdf as vdf;
 use structopt::StructOpt;
 use teardown_bin_format::parse_file;
 use teardown_editor_format::{vox, SceneWriterBuilder, SceneWriterBuilderError};
@@ -257,20 +257,25 @@ fn get_steam_dir() -> Result<PathBuf> {
 
 fn get_extra_library_dirs(main_dir: &Path) -> Result<Vec<PathBuf>> {
     let library_dirs_path = main_dir.join(
-        ["steamapps", "libraryfolders.vdf"]
-            .iter()
-            .collect::<PathBuf>(),
-    );
-    let vdf = steamy_vdf::load(&library_dirs_path)?;
-    #[rustfmt::skip]
-    let entries = vdf
-        .as_table().context(VDFErr)?
-        .get("LibraryFolders").context(VDFErr)?
-        .as_table().context(VDFErr)?;
+        ["steamapps", "libraryfolders.vdf"].iter().collect::<PathBuf>());
+    let vdf_string = std::fs::read_to_string(library_dirs_path)?;
+    let vdf = keyvalues_parser::Vdf::parse(&vdf_string)?;
+    let entries = vdf.value.get_obj().context(VDFErr)?.into_iter();
     let mut libraries = Vec::new();
-    for (key, value) in entries.iter() {
-        if key.parse::<i32>().is_ok() {
-            libraries.push(value.as_str().context(VDFErr)?.into());
+    for (k, values) in entries {
+        if k.parse::<i32>().is_ok() {
+            for library_dir in values {
+                match library_dir {
+                    Value::Str(str) => {
+                        libraries.push(str.into_owned().into());
+                    },
+                    Value::Obj(obj) => {
+                        for path in obj.get("path").context(VDFErr)? {
+                            libraries.push(path.get_str().context(VDFErr)?.into());
+                        }
+                    },
+                }
+            }
         }
     }
     Ok(libraries)
@@ -281,18 +286,18 @@ fn get_steam_library_dirs() -> Result<Vec<PathBuf>> {
     let extras = get_extra_library_dirs(&main_dir)
         .context("Could not get extra library folders")
         .unwrap_or_else(|err| {
-            eprintln!("{:#}", err);
+            eprintln!("{:?}", err);
             Vec::new()
         });
     Ok(iter::once(main_dir).chain(extras).collect())
 }
 
-struct SteamApp {
-    manifest: vdf::Table,
+struct SteamApp<'a> {
+    manifest: Obj<'a>,
     library_path: PathBuf,
 }
 
-impl SteamApp {
+impl SteamApp<'_> {
     fn compat_drive(&self) -> Option<PathBuf> {
         if let Some(user_config) = self.manifest.get("UserConfig") {
             if let Some(override_dest) = user_config.as_table()?.get("platform_override_dest") {

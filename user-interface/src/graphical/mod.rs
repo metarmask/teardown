@@ -190,7 +190,7 @@ impl Level {
             let path = self.path.clone();
             self.scene = Load::Loading;
             Command::perform(async { parse_file(path) }, |w| {
-                LevelMessage::SceneLoaded(Arc::new(w.map_err(|err| format!("{:#}", err))))
+                LevelMessage::SceneLoaded(Arc::new(w))
             })
         } else {
             Command::none()
@@ -201,7 +201,7 @@ impl Level {
 #[derive(Clone)]
 pub enum LevelMessage {
     ConvertXML,
-    SceneLoaded(Arc<Result<OwnedScene, String>>),
+    SceneLoaded(Arc<Result<OwnedScene>>),
     XMLConverted(Arc<OwnedScene>),
     Error(Arc<anyhow::Error>),
 }
