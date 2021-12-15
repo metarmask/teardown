@@ -488,7 +488,25 @@ pub struct Script<'a> {
     pub entity_handles: Vec<u32>,
     #[structr(len = "u32")]
     pub sounds: Vec<ScriptSound<'a>>,
-    pub z2_u8_4: u32
+    #[structr(len = "u32")]
+    pub transitions: Vec<ValueTransition<'a>>
+}
+#[derive(Debug, Clone, Parse)]
+pub struct ValueTransition<'a> {
+    variable: &'a str,
+    kind: TransitionKind,
+    transition_time: f32,
+    time: f64,
+    z_u8_4: [u8; 4]
+}
+
+#[derive(Debug, Clone, Parse)]
+#[repr(u8)]
+enum TransitionKind {
+    Cosine = 0,
+    EaseIn = 1,
+    EaseOut = 2,
+    Bounce = 3
 }
 
 #[derive(Debug, Clone, Parse)]
