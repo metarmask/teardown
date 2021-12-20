@@ -13,7 +13,7 @@ use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
-const VERSION: [u8; 3] = [0, 9, 0];
+const VERSION: [u8; 3] = [0, 9, 2];
 
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
@@ -332,6 +332,7 @@ pub struct Exhaust {
 #[derive(Debug, Clone, Parse)]
 pub struct Vehicle<'a> {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub body_handle: u32,
     pub transform: Transform,
     pub velocity: [f32; 3],
@@ -411,6 +412,7 @@ pub struct VehicleSound<'a> {
 #[derive(Debug, Clone, Parse)]
 pub struct Water {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub transform: Transform,
     pub depth: f32,
     pub wave: f32,
@@ -479,6 +481,7 @@ impl<'a> ::core::fmt::Display for Palette<'a> {
 #[derive(Debug, Clone, Parse)]
 pub struct Script<'a> {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub path: &'a str,
     pub params: Registry<'a>,
     pub last_update: f32,
@@ -572,6 +575,7 @@ pub use environment::Environment;
 #[derive(Debug, Clone, Parse)]
 pub struct Trigger<'a> {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub transform: Transform,
     pub type_: TriggerGeometryKind,
     pub sphere_radius: f32,
@@ -601,6 +605,7 @@ pub enum TriggerGeometryKind {
 #[derive(Debug, Clone, Parse)]
 pub struct Body {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub transform: Transform,
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
@@ -611,6 +616,7 @@ pub struct Body {
 #[derive(Debug, Clone, Parse)]
 pub struct Wheel {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub vehicle: u32,
     pub vehicle_body: u32,
     pub body: u32,
@@ -658,6 +664,7 @@ impl<'p> Parse<'p> for Registry<'p> {
 #[derive(Debug, Clone, Parse)]
 pub struct Location {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub transform: Transform,
 }
 
@@ -844,6 +851,7 @@ pub enum ScriptSoundKind {
 #[derive(Debug, Clone, Parse)]
 pub struct Screen<'a> {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub transform: Transform,
     pub size: [f32; 2],
     pub bulge: f32,
@@ -994,6 +1002,7 @@ impl RelativeEq for Transform {
 #[derive(Debug, Clone, Parse)]
 pub struct Shape<'a> {
     pub z_u8_start: u8,
+    pub z_u8_1: u8,
     pub transform: Transform,
     pub z_u8_4: [u8; 4],
     pub density: f32,
