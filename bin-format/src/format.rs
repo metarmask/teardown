@@ -13,10 +13,12 @@ use approx::{AbsDiffEq, RelativeEq};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
+#[allow(dead_code)] // Used by macro
 const VERSION: [u8; 3] = [0, 9, 0];
 
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
+    #[allow(dead_code)] // Used by macro
     #[structr(eq = "Scene::MAGIC")]
     magic: [u8; 5],
     #[structr(parse = "{ let v = parser.parse()?;
@@ -237,6 +239,7 @@ impl<'a> Iterator for SelfAndChildrenIter<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Entity<'a> {
+    #[allow(dead_code)] // Used by macro
     kind_byte: u8,
     pub handle: u32,
     pub tags: Tags<'a>,
@@ -245,6 +248,7 @@ pub struct Entity<'a> {
     pub kind: EntityKind<'a>,
     #[structr(len = "u32")]
     pub children: Vec<Entity<'a>>,
+    #[allow(dead_code)] // Used by macro
     #[structr(eq = "[0xef, 0xbe,0xef, 0xbeu8]")]
     beef_beef: [u8; 4],
 }
@@ -493,16 +497,16 @@ pub struct Script<'a> {
 }
 #[derive(Debug, Clone, Parse)]
 pub struct ValueTransition<'a> {
-    variable: &'a str,
-    kind: TransitionKind,
-    transition_time: f32,
-    time: f64,
-    z_u8_4: [u8; 4]
+    pub variable: &'a str,
+    pub kind: TransitionKind,
+    pub transition_time: f32,
+    pub time: f64,
+    pub z_u8_4: [u8; 4]
 }
 
 #[derive(Debug, Clone, Parse)]
 #[repr(u8)]
-enum TransitionKind {
+pub enum TransitionKind {
     Cosine = 0,
     EaseIn = 1,
     EaseOut = 2,

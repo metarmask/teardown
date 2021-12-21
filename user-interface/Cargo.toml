@@ -15,8 +15,11 @@ dirs = "3.0"
 keyvalues-parser = "0.1"
 anyhow = { version = "1.0", features = ["backtrace"] }
 thiserror = "1.0"
+rlua = "0.18"
+regex = "1.5"
+lazy_static = "1.4"
 
-iced = { version = "0.3", optional = true }
+iced = { version = "0.3", optional = true, features = ["image"] }
 alphanumeric-sort = { version = "1.4", optional = true }
 futures = { version = "0.3", optional = true }
 open = { version = "1.6", optional = true }

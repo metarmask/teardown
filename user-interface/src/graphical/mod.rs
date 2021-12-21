@@ -4,22 +4,23 @@ mod style;
 
 use std::{
     fmt::{self, Debug, Formatter},
-    fs, mem,
-    path::PathBuf,
-    sync::{Arc, Mutex},
+    fs::{self, ReadDir}, mem,
+    path::{PathBuf, Path},
+    sync::{Arc, Mutex}, backtrace::BacktraceStatus,
 };
 
-use anyhow::Result;
+use anyhow::{Result, Context};
 use iced::{
     button, executor, scrollable, Align, Application, Button, Clipboard, Column, Command, Element,
-    Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment, TextInput, text_input
+    Length, Row, Rule, Scrollable, Space, Text, VerticalAlignment, TextInput, text_input,
 };
-use owning_ref::OwningHandle;
-use teardown_bin_format::{parse_file, OwnedScene, Scene};
+use lazy_static::lazy_static;
+use regex::Regex;
+use teardown_bin_format::{parse_file, OwnedScene};
 use teardown_editor_format::{util::UnwrapLock, vox, SceneWriterBuilder};
 
 use self::alphanum_ord::AlphanumericOrd;
-use crate::{find_teardown_dirs, Directories, Error};
+use crate::{find_teardown_dirs, Directories, Error, load_level_meta, GameLuaMeta};
 
 pub struct MainView {
     dirs: Directories,
@@ -39,10 +40,18 @@ enum Load<T> {
 
 struct Level {
     path: PathBuf,
-    scene: Load<OwningHandle<Vec<u8>, std::boxed::Box<Scene<'static>>>>,
+    name: String,
+    scene: Load<OwnedScene>,
     button_select: button::State,
     button_to_xml: button::State,
-    button_to_blender: button::State,
+    button_to_blender: button::State
+}
+
+fn level_path_to_id(path: &Path) -> String {
+    let mut path = path.to_path_buf();
+    path.set_extension("");
+    let file_name = path.file_name().unwrap_or_default();
+    file_name.to_string_lossy().to_string()
 }
 
 struct LevelViews<'a> {
@@ -63,26 +72,17 @@ fn write_scene_and_vox(
 }
 
 impl Level {
-    fn new(path: PathBuf) -> Self {
+    fn new(path: PathBuf, name: String) -> Self {
         Self {
-            path,
-            scene: Load::None,
+            path, name, scene: Load::None,
             button_select: Default::default(),
             button_to_xml: Default::default(),
             button_to_blender: Default::default(),
         }
     }
 
-    fn name(&self) -> String {
-        let mut path = self.path.clone();
-        path.set_extension("");
-        let file_name = path.file_name().unwrap_or_default();
-        file_name.to_string_lossy().to_string()
-    }
-
     #[rustfmt::skip]
     fn view(&mut self, selected: bool) -> LevelViews {
-        let name = self.name();
         let side = if selected {
             Some(match &self.scene {
                 Load::None => { Text::new("").into() }
@@ -114,7 +114,7 @@ impl Level {
             })
         } else { None };
         let button = {
-            let text = Text::new(name);
+            let text = Text::new(self.name.clone());
             let mut button = Button::new(&mut self.button_select, Row::with_children(vec![text.into(), Space::with_width(Length::Fill).into()]));
             button = button.style(style::LevelButton {
                 selected: selected || matches!(self.scene, Load::Loading),
@@ -221,19 +221,51 @@ impl Debug for MainMessage {
     }
 }
 
-fn init_levels(dirs: &Directories) -> Result<Vec<Level>> {
-    let mut levels = fs::read_dir(dirs.main.join("data").join("bin"))?
-        .map(|res| res.map(|dir_entry| Level::new(dir_entry.path())))
+fn name_from_level_id(id_name: &str, lua_game_meta: &GameLuaMeta) -> Option<String> {
+    if let Some(props) = lua_game_meta.sandbox.get(id_name) {
+        return Some(format!("Sandbox: {}", props.get("name")?))
+    }
+    if let Some(mission) = lua_game_meta.missions.get(id_name) {
+        let level_name = mission.get("level")?;
+        let level = lua_game_meta.levels.get(level_name)?;
+        return Some(format!("Mission: {} - {}", level.get("title")?, mission.get("title")?))
+    }
+    if let Some(challenge) = lua_game_meta.challenges.get(id_name) {
+        let level = lua_game_meta.levels.get(challenge.get("level")?)?;
+        return Some(format!("Challenge: {} - {}", level.get("title")?, challenge.get("title")?))
+    }
+    for (cinematic_name, parts) in lua_game_meta.cinematic_parts.iter() {
+        for (part_n, part) in parts.iter().enumerate() {
+            if part.get("id")? == id_name {
+                let file = part.get("file")?;
+                // let layers = part.get("layers")?;
+                return Some(format!("Cinematic part: {}:{} on {}", cinematic_name, part_n, file))
+            }
+        }
+    }
+    None
+}
+
+fn read_dir_with_ctx<P: AsRef<Path>>(path: P) -> Result<ReadDir> {
+    fs::read_dir(path.as_ref()).context(format!("Reading directory \"{}\"", path.as_ref().display()))
+}
+
+fn init_levels(dirs: &Directories, lua_game_meta: GameLuaMeta) -> Result<Vec<Level>> {
+    let mut levels = read_dir_with_ctx(dirs.main.join("data").join("bin"))?
+        .map(|res| res.map(|dir_entry| {
+            let path = dir_entry.path();
+            let id = level_path_to_id(&path);
+            Level::new(path, name_from_level_id(&id, &lua_game_meta).unwrap_or(id))
+        }))
         .collect::<Result<Vec<_>, _>>()?;
-    levels.sort_by_cached_key(|x| AlphanumericOrd(x.name()));
-    levels.insert(0, Level::new(dirs.progress.join("quicksave.bin")));
+    levels.sort_by_cached_key(|x| AlphanumericOrd(x.name.clone()));
+    levels.insert(0, Level::new(dirs.progress.join("quicksave.bin"), "Last quicksave".to_string()));
     Ok(levels)
 }
 
 impl MainView {
-    fn new() -> Result<Self> {
-        let dirs = find_teardown_dirs()?;
-        let levels = init_levels(&dirs)?;
+    fn new(dirs: Directories) -> Result<Self> {
+        let levels = init_levels(&dirs, load_level_meta()?)?;
         let vox_store = vox::Store::new(&dirs.main)?;
         Ok(MainView {
             levels,
@@ -341,20 +373,106 @@ impl MainView {
 }
 
 pub struct SetDirectoriesView {
+    error: Option<ErrorView>,
+    inputs: Vec<FormInput>,
+    cont: button::State
+}
+
+#[derive(Debug, Clone)]
+pub struct FormInput {
+    name: String,
+    value: String,
     text_input: text_input::State,
-    dirs: Directories
+}
+
+#[derive(Debug, Clone)]
+pub struct NewValueMessage {
+    name: String,
+    value: String
+}
+
+impl FormInput {
+    fn new<A: ToOwned<Owned = String> + ?Sized, B: ToOwned<Owned = String> + ?Sized>(name: &A, value: &B) -> FormInput {
+        Self {
+            name: name.to_owned(), value: value.to_owned(), text_input: Default::default()
+        }
+    }
+
+    fn view(&mut self) -> Element<'_, NewValueMessage> {
+        let name = self.name.clone();
+        Element::new(TextInput::new(&mut self.text_input, &self.name, &self.value, move |value| {
+            NewValueMessage { name: name.clone(), value }
+        }))
+    }
 }
 
 pub enum App {
     Main(MainView),
     SetDirectories(SetDirectoriesView),
-    Error(String),
+    Error(ErrorView),
+}
+
+pub struct ErrorView {
+    error: Arc<anyhow::Error>,
+    scroll_state: scrollable::State,
+}
+
+impl ErrorView {
+    fn new(error: anyhow::Error) -> Self {
+        Self { error: Arc::new(error), scroll_state: Default::default() }
+    }
+
+    fn view<'a, T: 'a>(&'a mut self) -> Scrollable<'a, T> {
+        let formatted_error = format_error(&self.error);
+        eprintln!("{}", formatted_error);
+        Scrollable::new(&mut self.scroll_state).style(style::Theme)
+        .push(Text::new(formatted_error))
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
     Main(MainMessage),
-    SetDirectories(Directories),
+    SetDirectoriesContinue,
+    FormInput(NewValueMessage)
+}
+
+fn format_error(error: &anyhow::Error) -> String {
+    lazy_static! {
+        static ref RE_AT: Regex = Regex::new(r"\s*(\d+): (.+)\n(?:\s+at (.+))?").unwrap();
+        static ref RE_PATH_PREFIX: Regex = Regex::new(r"(?:^/.*?/\.?cargo/registry/src/.+?/|^/rustc/.+?/)").unwrap();
+    }
+    let mut s = format!("{}", error);
+    if let Some(cause) = error.source() {
+        s += "\n\nCaused by:";
+        for (n, cause) in anyhow::Chain::new(cause).enumerate() {
+            s += "\n";
+            s.extend(format!("{}: {}\n", n, cause).lines().map(|line| format!("    {}", line)).intersperse("\n".to_string()));
+        }
+    }
+    let backtrace = error.backtrace();
+    if let BacktraceStatus::Captured = backtrace.status() {
+        s += "\n\nBacktrace:\n";
+        for re_match in RE_AT.captures_iter(&backtrace.to_string()) {
+            let n = re_match.get(1).map(|m| m.as_str()).unwrap();
+            let symbol = re_match.get(2).map(|m| m.as_str()).unwrap();
+            if symbol == "std::sys_common::backtrace::__rust_begin_short_backtrace" { break }
+            s += &format!("{}: {}\n", n, symbol);
+            if let Some(path) = re_match.get(3) {
+                let path_str = path.as_str().to_string();
+                s += &format!("    at {}\n", RE_PATH_PREFIX.replace_all(&path_str, ""))
+            }
+        }
+    }
+    s
+}
+
+fn dirs_from_input(inputs: Vec<FormInput>) -> Result<Directories> {
+    Ok(Directories {
+        mods: PathBuf::from(inputs.iter().find(|i| i.name == "Mods").unwrap().value.clone()),
+        progress: PathBuf::from(inputs.iter().find(|i| i.name == "Progress").unwrap().value.clone()),
+        main: PathBuf::from(inputs.iter().find(|i| i.name == "Main").unwrap().value.clone()),
+    })
 }
 
 impl Application for App {
@@ -364,9 +482,18 @@ impl Application for App {
 
     fn new(_flags: ()) -> (Self, Command<Self::Message>) {
         (
-            match MainView::new() {
-                Ok(main) => App::Main(main),
-                Err(err) => App::Error(format!("{:#}", err)),
+            match find_teardown_dirs() {
+                Ok(dirs) => {
+                    match MainView::new(dirs) {
+                        Ok(main) => App::Main(main),
+                        Err(err) => App::Error(ErrorView { error: Arc::new(err), scroll_state: Default::default()}),
+                    }
+                },
+                Err(err) => App::SetDirectories(SetDirectoriesView { error: Some(ErrorView::new(err)), cont: Default::default(), inputs: vec![
+                    FormInput::new("Mods", ""),
+                    FormInput::new("Progress", ""),
+                    FormInput::new("Main", "")
+                ] })
             },
             Command::none(),
         )
@@ -385,30 +512,65 @@ impl Application for App {
             AppMessage::Main(main_message) => match self {
                 App::Main(main_view) => match main_message {
                     MainMessage::Error(error) => {
-                        *self = App::Error(format!("{:#}", error));
+                        *self = App::Error(ErrorView { error, scroll_state: Default::default() });
                         Command::none()
                     }
                     other => main_view.update(other).map(AppMessage::Main),
                 },
-                App::Error(ref mut error) => {
-                    *error += "\nMainView could not receive a message because of the current error";
+                App::Error(_) => {
+                    eprintln!("MainView could not receive a message because of the current error");
                     Command::none()
                 }
                 App::SetDirectories(_) => todo!(),
             },
-            AppMessage::SetDirectories(_) => todo!(),
+            AppMessage::SetDirectoriesContinue => {
+                match self {
+                    App::SetDirectories(SetDirectoriesView { inputs, .. }) => {
+                        *self = match MainView::new(dirs_from_input(inputs.to_vec()).unwrap()) {
+                            Ok(main) => App::Main(main),
+                            Err(err) => App::Error(ErrorView { error: Arc::new(err), scroll_state: Default::default()}),
+                        }
+                    },
+                    _ => unreachable!("continue set directories")
+                }
+                
+                Command::none()
+            },
+            AppMessage::FormInput(new_value) => {
+                match self {
+                    App::SetDirectories(a) => {
+                        for input in a.inputs.iter_mut() {
+                            if input.name == new_value.name {
+                                input.value = new_value.value;
+                                break
+                            }
+                        }
+                        Command::none()
+                    },
+                    _ => unreachable!("no form input in the other views")
+                }
+            },
         }
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
         match self {
             App::Main(main_view) => main_view.view().map(AppMessage::Main),
-            App::SetDirectories(SetDirectoriesView { text_input , dirs }) => Element::new(Column::with_children(vec![
-                Element::new(Row::with_children(vec![
-                    Element::new(TextInput::new(text_input, "test", &dirs.main.to_string_lossy(), |_| AppMessage::SetDirectories(Directories::default())))
-                ]))
-            ])),
-            App::Error(error) => Text::new(error.clone()).into(),
+            App::SetDirectories(SetDirectoriesView { error, cont, inputs }) => {
+                let mut column_children = vec![];
+                if let Some(err) = error {
+                    column_children.push(Element::new(err.view().max_height(95)));
+                }
+                column_children.append(&mut vec![
+                    Element::new(Column::with_children(inputs.iter_mut().map(|input| {
+                        input.view().map(AppMessage::FormInput)
+                    }).collect::<Vec<_>>())),
+                    Element::new(Button::new(cont, Text::new("Continue"))
+                    .on_press(AppMessage::SetDirectoriesContinue))
+                ]);
+                Element::new(Column::with_children(column_children))
+            },
+            App::Error(error_view) => error_view.view().into(),
         }
     }
 }

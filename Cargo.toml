@@ -7,10 +7,10 @@ members = [
   "blender/rust-addon-installer",
 ]
 
-# [profile.release]
+[profile.release]
 # lto = true
 # codegen-units = 1
-# debug = true
+debug = true
 
 [profile.dev.package."*"]
 opt-level = 3
