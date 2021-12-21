@@ -56,7 +56,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     _ => return Err(err.into()),
                 }
             }
-            command!(blender - -python(run_test)[args])
+            #[rustfmt::skip]
+            command!(blender --python (run_test) [args])
                 .status()
                 .unwrap();
         }

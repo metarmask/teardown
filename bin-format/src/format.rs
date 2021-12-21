@@ -105,7 +105,8 @@ pub mod joint {
         pub kind: JointKind,
         pub shape_handles: [u32; 2],
         pub shape_positions: [[f32; 3]; 2],
-        pub hinge_or_prismatic_rot: [[f32; 3]; 2],
+        /// Used by hinge and prismatic joints.
+        pub shape_axes: [[f32; 3]; 2],
         pub connected: bool,
         pub collisions: bool,
         pub rot_strength: f32,
@@ -114,7 +115,7 @@ pub mod joint {
         /// Angle limits in radians for hinges, distance limits in meters for
         /// prismatic joints.
         pub limits: [f32; 2],
-        pub z_f32_2: [f32; 2],
+        pub z_f32_2_hinge: [f32; 2],
         pub size: f32,
         pub z_u8: u8,
         pub z_u32_2: [[u8; 4]; 2],
@@ -1020,10 +1021,10 @@ pub struct Shape<'a> {
     pub z_u8_4: [u8; 4],
     pub density: f32,
     pub strength: f32,
-    pub blend_texture_tile: u16,
     pub texture_tile: u16,
-    pub blend_texture_weight: f32,
+    pub blend_texture_tile: u16,
     pub texture_weight: f32,
+    pub blend_texture_weight: f32,
     // Texture offset?
     pub starting_world_position: [f32; 3],
     pub z_f32: f32,

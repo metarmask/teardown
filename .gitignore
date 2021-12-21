@@ -6,3 +6,4 @@ expanded.rs
 debug.json
 # because the crate mostly contains libraries
 Cargo.lock
+user-interface/src/after_load.rs

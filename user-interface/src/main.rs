@@ -1,6 +1,10 @@
 #![feature(stmt_expr_attributes, iter_intersperse, backtrace, backtrace_frames)]
 use owning_ref::OwningHandle;
 use rlua::{Lua, FromLua, prelude::LuaError};
+#[cfg(custom_after_load)]
+mod after_load;
+#[cfg(custom_after_load)]
+use after_load::after_load;
 #[cfg(feature = "graphical")]
 mod graphical;
 
@@ -57,6 +61,8 @@ enum AfterLoadCmd {
         level_name: String,
     },
     PrintEnv,
+    #[cfg(custom_after_load)]
+    IgnoredCode,
 }
 
 #[derive(StructOpt)]
@@ -308,6 +314,10 @@ fn main() -> Result<()> {
                 }
                 AfterLoadCmd::PrintEnv => {
                     println!("{:#?}", scene.environment);
+                }
+                #[cfg(custom_after_load)]
+                AfterLoadCmd::IgnoredCode => {
+                    after_load(scene)?;
                 }
             }
         }

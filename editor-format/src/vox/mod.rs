@@ -10,7 +10,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::bail;
+use anyhow::{bail, Context as AnyhowContext};
 use nalgebra::{UnitQuaternion, Vector3};
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use teardown_bin_format::{
@@ -50,7 +50,12 @@ impl StoreFile {
     fn new(path: PathBuf, palette: &[Material; 256]) -> Result<Self> {
         let mut shape_indices = HashMap::new();
         let vox = if path.exists() {
-            let file = vox::semantic::parse_file(&path)?;
+            let file = vox::semantic::parse_file(&path).context(
+                path.components()
+                    .last()
+                    .map(|comp| comp.as_os_str().to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+            )?;
             for (i, child) in file.root.children().unwrap_or(&vec![]).iter().enumerate() {
                 if let Some(name) = &child.name {
                     if let Ok(hash_n) = hash::str_to_n(name) {

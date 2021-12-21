@@ -1,6 +1,6 @@
-use std::{fs::File, io::Write};
+use std::{f32::consts::TAU, fs::File, io::Write};
 
-use nalgebra::{Isometry3, Point3};
+use nalgebra::{Isometry3, Point3, Rotation3, UnitQuaternion};
 use quick_xml::{
     events::{BytesStart, Event},
     Writer,
@@ -10,7 +10,7 @@ use teardown_bin_format::{
 };
 
 use crate::{
-    hash, quaternion_to_euler,
+    hash, quaternion_to_euler, rot_matrix_to_euler,
     vox::{self, transform_shape, VoxelsPart},
     xml::attrs::{flatten, join_as_strings, ToXMLAttributes},
     Result, SceneWriter, WriteEntityContext, XMLResult,
@@ -101,19 +101,26 @@ impl WriteEntityContext<'_, &mut File> {
         shape: &Shape,
     ) -> (&'static str, Vec<(&'static str, String)>) {
         let mut kind_attrs = vec![
-            (
-                "texture",
-                format!("{} {}", shape.texture_tile, shape.texture_weight),
-            ),
-            (
-                "blendtexture",
-                format!("{} {}", shape.blend_texture_tile, shape.blend_texture_weight),
-            ),
-            ("density", shape.density.to_string()),
-            ("strength", shape.strength.to_string()),
             /* ("collide", ),
              * ("prop", ) */
         ];
+        if shape.texture_tile != 0 {
+            kind_attrs.push((
+                "texture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ));
+        }
+        if shape.blend_texture_tile != 0 {
+            kind_attrs.push((
+                "blendtexture",
+                format!("{} {}", shape.texture_tile, shape.texture_weight),
+            ));
+        }
+        if shape.density != 1.0 { kind_attrs.push(("density", shape.density.to_string())); }
+        if shape.strength != 1.0 { kind_attrs.push(("strength", shape.strength.to_string())); }
+        if shape.voxel_scaling != 0.1 {
+            kind_attrs.push(("scale", (shape.voxel_scaling * 10.0).to_string()))
+        }
         if shape.voxels.palette_index_runs.is_empty() {
             kind_attrs.push(("hidden_", true.to_string()));
         }
@@ -194,10 +201,23 @@ impl WriteEntityContext<'_, &mut File> {
                     relative_pos[2],
                 ));
                 attrs.push(("pos", join_as_strings(pos.coords.iter())));
-                attrs.push((
-                    "rot",
-                    join_as_strings(quaternion_to_euler(joint.ball_rot).iter()),
-                ));
+                if joint.kind == JointKind::Ball {
+                    attrs.push((
+                        "rot",
+                        join_as_strings(quaternion_to_euler(joint.ball_rot).iter()),
+                    ));
+                } else {
+                    let mut rot = Rotation3::new(
+                        [
+                            joint.shape_axes[1][0] / TAU,
+                            joint.shape_axes[1][1] / TAU,
+                            joint.shape_axes[1][2] / TAU,
+                        ]
+                        .into(),
+                    );
+                    rot.renormalize();
+                    attrs.push(("rot", join_as_strings(rot_matrix_to_euler(rot).iter())));
+                }
             }
             ("joint", attrs)
         }
