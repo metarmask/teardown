@@ -110,7 +110,8 @@ fn level_name_from_path<P: AsRef<Path>>(path: P) -> String {
 }
 
 fn read_lua_with_includes<P1: AsRef<Path>, P2: AsRef<Path>>(file: P1, search_dir: P2, included: &mut HashSet<PathBuf>) -> Result<String> {
-    let file_content = std::fs::read_to_string(search_dir.as_ref().join(&file))?;
+    let path = search_dir.as_ref().join(&file);
+    let file_content = std::fs::read_to_string(&path).context(path.display().to_string())?;
     let mut full_file = String::new();
     for line in file_content.lines() {
         if let Some(s) = line.strip_prefix("#include \"").and_then(|a| a.strip_suffix('\"')) {
@@ -165,9 +166,9 @@ pub(crate) struct GameLuaMeta {
     challenges: StrTo<StrToStr>,
 }
 
-pub(crate) fn load_level_meta() -> Result<GameLuaMeta> {
+pub(crate) fn load_level_meta(dirs: &Directories) -> Result<GameLuaMeta> {
     let lua = Lua::new();
-    let full_code = read_lua_with_includes("game.lua", "/home/metarmask/.local/share/Steam/steamapps/common/Teardown/data/", &mut Default::default())?;
+    let full_code = read_lua_with_includes("game.lua", dirs.main.join("data"), &mut Default::default())?;
     lua.context(|lua_ctx| {
         lua_ctx
             .load(&full_code)

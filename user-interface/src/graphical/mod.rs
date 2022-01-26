@@ -265,7 +265,7 @@ fn init_levels(dirs: &Directories, lua_game_meta: GameLuaMeta) -> Result<Vec<Lev
 
 impl MainView {
     fn new(dirs: Directories) -> Result<Self> {
-        let levels = init_levels(&dirs, load_level_meta()?)?;
+        let levels = init_levels(&dirs, load_level_meta(&dirs)?)?;
         let vox_store = vox::Store::new(&dirs.main)?;
         Ok(MainView {
             levels,
