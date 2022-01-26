@@ -245,7 +245,7 @@ pub struct Entity<'a> {
     pub handle: u32,
     pub tags: Tags<'a>,
     pub desc: &'a str,
-    #[structr(parse = "EntityKind::parse(parser, kind_byte.into())")]
+    #[structr(parse = "EntityKind::parse(parser, kind_variant_from_byte(kind_byte)?)")]
     pub kind: EntityKind<'a>,
     #[structr(len = "u32")]
     pub children: Vec<Entity<'a>>,
@@ -261,24 +261,23 @@ impl<'a> Entity<'a> {
     }
 }
 
-impl From<u8> for EntityKindVariants {
-    fn from(byte: u8) -> Self {
-        match byte {
-            2 => Self::Shape,
-            1 => Self::Body,
-            10 => Self::Screen,
-            5 => Self::Water,
-            8 => Self::Vehicle,
-            11 => Self::Trigger,
-            4 => Self::Location,
-            9 => Self::Wheel,
-            7 => Self::Joint,
-            12 => Self::Script,
-            3 => Self::Light,
-            // other => Self::Body,
-            other => unimplemented!("entity {}", other),
-        }
-    }
+fn kind_variant_from_byte<'p>(byte: u8) -> Result<EntityKindVariants, ParseError<'p>> {
+    type Kind = EntityKindVariants;
+    return Ok(match byte {
+        1 => Kind::Body,
+        2 => Kind::Shape,
+        3 => Kind::Light,
+        4 => Kind::Location,
+        5 => Kind::Water,
+        // 6?
+        7 => Kind::Joint,
+        8 => Kind::Vehicle,
+        9 => Kind::Wheel,
+        10 => Kind::Screen,
+        11 => Kind::Trigger,
+        12 => Kind::Script,
+        _ => return Err(Parser::error(ParseErrorKind::NoReprIntMatch(byte.into())))
+    })
 }
 
 impl<'a> Entity<'a> {
