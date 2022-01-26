@@ -164,7 +164,7 @@ impl Store {
                         palette,
                     )?)))
                     .clone(),
-            })
+            });
         }
         Ok(vec)
     }
@@ -210,6 +210,7 @@ fn material_kind_for_index(index: u8) -> MaterialKind {
     MaterialKind::None
 }
 
+#[allow(clippy::identity_op)]
 fn range_for_material_kind(material_kind: MaterialKind) -> Option<[u8; 2]> {
     Some(match material_kind {
         MaterialKind::Glass       => [  1,   1+8*1-1],
@@ -315,7 +316,7 @@ pub(crate) fn remap_materials(orig_palette: &[Material; 256]) -> PaletteMapping 
         if let Err(()) = try_swap_index(i, orig_palette, &mut new_to_orig, &mut correct) {
             let material = &orig_palette[new_to_orig[i as usize] as usize];
             if !material.replacable {
-                overflowed.push(new_to_orig[i as usize])
+                overflowed.push(new_to_orig[i as usize]);
             }
         }
     }
@@ -333,10 +334,10 @@ pub(crate) fn remap_materials(orig_palette: &[Material; 256]) -> PaletteMapping 
     if !overflowed.is_empty() {
         warn_wrong_indices(
             overflowed.as_ref(),
-            &orig_palette,
+            orig_palette,
             &new_palette,
             &orig_to_new,
-        )
+        );
     }
     PaletteMapping::Remapped(Box::new((new_palette, orig_to_new)))
 }
@@ -364,7 +365,7 @@ fn warn_wrong_indices(
             })
             .collect::<Vec<_>>()
             .join(", ")
-    )
+    );
 }
 
 pub(crate) fn convert_material(material: &Material) -> VoxMaterial {
@@ -589,9 +590,9 @@ impl SceneWriter<'_> {
                     palette_file,
                     |palette_file, shape_voxel_data| {
                         palette_file.unwrap_lock()
-                            .store_voxel_data(&shape_voxel_data)
+                            .store_voxel_data(shape_voxel_data);
                     },
-                )
+                );
             });
         Ok(Context {
             palette_mappings,

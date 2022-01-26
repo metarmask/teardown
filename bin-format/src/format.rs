@@ -10,18 +10,21 @@ use std::{
 };
 
 use approx::{AbsDiffEq, RelativeEq};
+use enumflags2::{bitflags, BitFlags};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
+#[allow(dead_code)] // Used by macro
 const VERSION: [u8; 3] = [0, 9, 2];
 
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
+    #[allow(dead_code)] // Used by macro
     #[structr(eq = "Scene::MAGIC")]
     magic: [u8; 5],
     #[structr(parse = "{ let v = parser.parse()?;
             if v != VERSION {
-                println!(\"Warning. Version mismatch: {:?} != {:?}\", v, VERSION) } Ok(v) }")]
+                println!(\"Warning. Version mismatch: {:?} != {:?}\", v, VERSION) } Ok(v) }";)]
     pub version: [u8; 3],
     pub level: &'a str,
     pub z_bytes4_eq_0: [u8; 4],
@@ -43,7 +46,7 @@ pub struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    pub const MAGIC: &'static [u8] = &[0x54, 0x44, 0x42, 0x49, 0x4e];
+    pub const MAGIC: &'static [u8] = b"TDBIN";
 
     pub fn iter_entities(&'a self) -> impl Iterator<Item = &'a Entity> {
         self.entities.iter().flat_map(Entity::self_and_all_children)
@@ -238,14 +241,16 @@ impl<'a> Iterator for SelfAndChildrenIter<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Entity<'a> {
+    #[allow(dead_code)] // Used by macro
     kind_byte: u8,
     pub handle: u32,
     pub tags: Tags<'a>,
     pub desc: &'a str,
-    #[structr(parse = "EntityKind::parse(parser, kind_byte.into())")]
+    #[structr(parse = "EntityKind::parse(parser, kind_variant_from_byte(kind_byte)?)")]
     pub kind: EntityKind<'a>,
     #[structr(len = "u32")]
     pub children: Vec<Entity<'a>>,
+    #[allow(dead_code)] // Used by macro
     #[structr(eq = "[0xef, 0xbe,0xef, 0xbeu8]")]
     beef_beef: [u8; 4],
 }
@@ -257,31 +262,30 @@ impl<'a> Entity<'a> {
     }
 }
 
-impl From<u8> for EntityKindVariants {
-    fn from(byte: u8) -> Self {
-        match byte {
-            2 => Self::Shape,
-            1 => Self::Body,
-            10 => Self::Screen,
-            5 => Self::Water,
-            8 => Self::Vehicle,
-            11 => Self::Trigger,
-            4 => Self::Location,
-            9 => Self::Wheel,
-            7 => Self::Joint,
-            12 => Self::Script,
-            3 => Self::Light,
-            // other => Self::Body,
-            other => unimplemented!("entity {}", other),
-        }
-    }
+fn kind_variant_from_byte<'p>(byte: u8) -> Result<EntityKindVariants, ParseError<'p>> {
+    type Kind = EntityKindVariants;
+    return Ok(match byte {
+        1 => Kind::Body,
+        2 => Kind::Shape,
+        3 => Kind::Light,
+        4 => Kind::Location,
+        5 => Kind::Water,
+        // 6?
+        7 => Kind::Joint,
+        8 => Kind::Vehicle,
+        9 => Kind::Wheel,
+        10 => Kind::Screen,
+        11 => Kind::Trigger,
+        12 => Kind::Script,
+        _ => return Err(Parser::error(ParseErrorKind::NoReprIntMatch(byte.into())))
+    })
 }
 
 impl<'a> Entity<'a> {
     #[must_use]
     pub fn self_and_all_children(&self) -> SelfAndChildrenIter<'_> {
         SelfAndChildrenIter {
-            entity: &self,
+            entity: self,
             child_i: 0,
             returned_self: false,
             child_children: None,
@@ -331,8 +335,8 @@ pub struct Exhaust {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Vehicle<'a> {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub body_handle: u32,
     pub transform: Transform,
     pub velocity: [f32; 3],
@@ -411,8 +415,8 @@ pub struct VehicleSound<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Water {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub depth: f32,
     pub wave: f32,
@@ -480,8 +484,8 @@ impl<'a> ::core::fmt::Display for Palette<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Script<'a> {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub path: &'a str,
     pub params: Registry<'a>,
     pub last_update: f32,
@@ -492,7 +496,25 @@ pub struct Script<'a> {
     pub entity_handles: Vec<u32>,
     #[structr(len = "u32")]
     pub sounds: Vec<ScriptSound<'a>>,
-    pub z2_u8_4: u32
+    #[structr(len = "u32")]
+    pub transitions: Vec<ValueTransition<'a>>
+}
+#[derive(Debug, Clone, Parse)]
+pub struct ValueTransition<'a> {
+    pub variable: &'a str,
+    pub kind: TransitionKind,
+    pub transition_time: f32,
+    pub time: f64,
+    pub z_u8_4: [u8; 4]
+}
+
+#[derive(Debug, Clone, Parse)]
+#[repr(u8)]
+pub enum TransitionKind {
+    Cosine = 0,
+    EaseIn = 1,
+    EaseOut = 2,
+    Bounce = 3
 }
 
 #[derive(Debug, Clone, Parse)]
@@ -574,8 +596,8 @@ pub use environment::Environment;
 
 #[derive(Debug, Clone, Parse)]
 pub struct Trigger<'a> {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub type_: TriggerGeometryKind,
     pub sphere_radius: f32,
@@ -602,21 +624,48 @@ pub enum TriggerGeometryKind {
     Polygon = 3,
 }
 
+#[bitflags]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(u16)]
+pub enum Flags { // Broken, JointedToStatic, Active, Dynamic, Light active
+         Tagged = 0b_0000_0000_0000_0001,
+    InheritTags = 0b_0000_0000_0000_0010,
+    Unbreakable = 0b_0000_0000_0000_0100,
+         NoCull = 0b_0000_0000_0000_1000,
+             F4 = 0b_0000_0000_0001_0000,
+             F5 = 0b_0000_0000_0010_0000,
+             F6 = 0b_0000_0000_0100_0000,
+             F7 = 0b_0000_0000_1000_0000,
+             F8 = 0b_0000_0001_0000_0000,
+             F9 = 0b_0000_0010_0000_0000,
+            F10 = 0b_0000_0100_0000_0000,
+            F11 = 0b_0000_1000_0000_0000,
+            F12 = 0b_0001_0000_0000_0000,
+            F13 = 0b_0010_0000_0000_0000,
+            F14 = 0b_0100_0000_0000_0000,
+            F15 = 0b_1000_0000_0000_0000,
+}
+
+fn parse_bitflags<'p, 'a>(parser: &'a mut Parser<'p>) -> Result<BitFlags<Flags>, ParseError<'p>>
+where 'p: 'a {
+    Ok(BitFlags::from_bits_truncate(parser.parse()?))
+}
+
 #[derive(Debug, Clone, Parse)]
 pub struct Body {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub entity_flags: BitFlags<Flags>,
     pub transform: Transform,
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
     pub dynamic: bool,
-    pub flags: u8,
+    pub body_flags: u8,
 }
 
 #[derive(Debug, Clone, Parse)]
 pub struct Wheel {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub vehicle: u32,
     pub vehicle_body: u32,
     pub body: u32,
@@ -663,8 +712,8 @@ impl<'p> Parse<'p> for Registry<'p> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Location {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
 }
 
@@ -774,6 +823,7 @@ impl<'a> Hash for LuaValue<'a> {
 // Lua tables do not allow NaN as keys
 impl<'a> Eq for LuaValue<'a> {}
 
+#[allow(clippy::ref_binding_to_reference)]
 impl fmt::Debug for LuaValue<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let dbg: &dyn fmt::Debug = match self {
@@ -797,7 +847,7 @@ impl<'p> Parse<'p> for LuaValue<'p> {
             3 => LuaValue::Number(parser.parse()?),
             4 => LuaValue::String(parser.parse()?),
             5 => LuaValue::Table(parser.parse()?),
-            0xFFFFFFFB => LuaValue::Reference(parser.parse()?),
+            0xFF_FF_FF_FB => LuaValue::Reference(parser.parse()?),
             other => {
                 return Err(Parser::error(ParseErrorKind::NoReprIntMatch(u64::from(
                     other,
@@ -850,8 +900,8 @@ pub enum ScriptSoundKind {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Screen<'a> {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub size: [f32; 2],
     pub bulge: f32,
@@ -1001,8 +1051,8 @@ impl RelativeEq for Transform {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Shape<'a> {
-    pub z_u8_start: u8,
-    pub z_u8_1: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub z_u8_4: [u8; 4],
     pub density: f32,

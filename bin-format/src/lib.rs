@@ -11,6 +11,7 @@ use std::{
 };
 
 use anyhow::Result;
+use enumflags2::BitFlags;
 use flate2::read::ZlibDecoder;
 use owning_ref::OwningHandle;
 use structr::{get_end_path, write_debug_json, Parse, ParseError, Parser};
@@ -35,7 +36,7 @@ fn read_bytes<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Error> {
 }
 
 fn decompress_if_needed(bytes: Vec<u8>) -> Result<Vec<u8>, io::Error> {
-    Ok(if bytes.starts_with(&Scene::MAGIC) {
+    Ok(if bytes.starts_with(Scene::MAGIC) {
         bytes
     } else {
         let mut new_bytes = Vec::with_capacity(bytes.len());
@@ -65,7 +66,7 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<OwnedScene> {
 pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn StdError>> {
     let uncompressed = read_to_uncompressed(path)?;
     let mut parser = Parser::new(&uncompressed);
-    let _scene = match Scene::parse(&mut parser) {
+    let scene = match Scene::parse(&mut parser) {
         Ok(ok) => ok,
         Err(err) => {
             println!("Error: {:?}", err.kind);
@@ -80,6 +81,26 @@ pub fn test_file<P: AsRef<Path>>(path: P, debug: bool) -> Result<(), Box<dyn Std
             Err(err).map_err(|err| format!("{:?}", err))?
         }
     };
+    for entity in scene.iter_entities() {
+        type E<'a> = EntityKind<'a>;
+        let mut start = match entity.kind {
+              E::Shape(Shape { flags, ..})
+            | E::Screen(Screen { flags, .. })
+            | E::Body(Body { entity_flags: flags, .. })
+            | E::Water(Water { flags, .. })
+            | E::Vehicle(Vehicle { flags, .. })
+            | E::Trigger(Trigger { flags, .. })
+            | E::Location(Location { flags, .. })
+            | E::Wheel(Wheel { flags, .. })
+            | E::Script(Script { flags, .. }) => flags,
+            | E::Joint(_) | E::Light(_) => continue,
+        };
+        start.remove(Flags::Unbreakable | Flags::Tagged);
+        if start != BitFlags::empty() {
+            println!("{:?} {:?}", start, entity)
+        }
+        
+    }
     if debug {
         write_debug_json(&parser.context)?;
     }

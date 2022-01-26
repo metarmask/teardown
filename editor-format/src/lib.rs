@@ -20,7 +20,7 @@ use std::{
 use ::vox::semantic::SemanticError as VoxError;
 use anyhow::Result;
 use derive_builder::Builder;
-use nalgebra::{Isometry3, Point3, Quaternion, Rotation, Rotation3, UnitQuaternion};
+use nalgebra::{Isometry3, Point3, Quaternion, Rotation3, UnitQuaternion};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{
     events::{BytesStart, Event},
@@ -38,6 +38,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 enum Error {
     #[error(".vox error: {:#}", 0)]
@@ -139,7 +140,7 @@ impl WriteEntityContext<'_, &mut File> {
                     let mut world_transform_isometry: Isometry3<f32> = world_transform.into();
                     let parent_isometry: Isometry3<f32> = parent_transform.into();
                     world_transform_isometry = parent_isometry.inv_mul(&world_transform_isometry);
-                    world_transform = world_transform_isometry.into()
+                    world_transform = world_transform_isometry.into();
                 }
             }
             attrs.append(&mut world_transform.to_xml_attrs());
@@ -210,11 +211,11 @@ impl WriteEntityContext<'_, &mut File> {
         let mut parts = vec![entity.handle.to_string()];
         match &entity.kind {
             EntityKind::Shape(shape) => {
-                parts.push(format!("{} voxels", shape.voxels.iter().count()))
+                parts.push(format!("{} voxels", shape.voxels.iter().count()));
             }
             EntityKind::Body(body) => {
                 if !body.dynamic {
-                    parts.push("static".into())
+                    parts.push("static".into());
                 }
             }
             EntityKind::Screen(_) | EntityKind::Trigger(_) | EntityKind::Wheel(_) => {}
@@ -223,7 +224,7 @@ impl WriteEntityContext<'_, &mut File> {
             }
             EntityKind::Vehicle(vehicle) => {
                 if !vehicle.properties.sound.name.is_empty() {}
-                parts.push(vehicle.properties.sound.name.into())
+                parts.push(vehicle.properties.sound.name.into());
             }
             EntityKind::Location(_) => parts.push(tags_to_string(&entity.tags)),
             EntityKind::Joint(joint) => parts.push(format!("{:?}", joint.kind).to_lowercase()),
@@ -238,13 +239,13 @@ impl WriteEntityContext<'_, &mut File> {
                         .strip_suffix(".lua")
                         .unwrap_or(&short_path)
                         .into(),
-                )
+                );
             }
             EntityKind::Light(light) => {
                 if self.is_flashlight(entity) {
                     parts.push("flashlight".into());
                 }
-                parts.push(format!("{:?}", light.kind).to_lowercase())
+                parts.push(format!("{:?}", light.kind).to_lowercase());
             }
         }
         parts.join(" ")
@@ -287,7 +288,7 @@ pub(crate) fn corrected_transform(parent: Option<&Entity>) -> Option<Transform> 
             parent.transform().map(|transform: &Transform| {
                 if let EntityKind::Shape(shape) = &parent.kind {
                     if shape.voxels.size.iter().all(|&dim| dim <= 256) {
-                        return transform_shape(&transform, shape.voxels.size);
+                        return transform_shape(transform, shape.voxels.size);
                     }
                 }
                 transform.clone()

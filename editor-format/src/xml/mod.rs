@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, fs::File, io::Write};
 
-use nalgebra::{Isometry3, Point3, Rotation3, UnitQuaternion};
+use nalgebra::{Isometry3, Point3, Rotation3};
 use quick_xml::{
     events::{BytesStart, Event},
     Writer,
@@ -71,7 +71,7 @@ impl SceneWriter<'_> {
         let entities = self.scene.entities.iter().collect::<Vec<_>>();
         let mut write_entity_context = WriteEntityContext {
             vox: vox_context,
-            scene: &self.scene,
+            scene: self.scene,
             writer: &mut xml_writer,
         };
         for entity in entities {
@@ -122,7 +122,7 @@ impl WriteEntityContext<'_, &mut File> {
             kind_attrs.push(("scale", (shape.voxel_scaling * 10.0).to_string()))
         }
         if shape.voxels.palette_index_runs.is_empty() {
-            kind_attrs.push(("hidden_", true.to_string()))
+            kind_attrs.push(("hidden_", true.to_string()));
         }
         let mut compound = false;
         if let Some(voxels_parts) = self.vox.shape_voxels_parts.get(&entity.handle) {
@@ -135,7 +135,7 @@ impl WriteEntityContext<'_, &mut File> {
                             "hash/{}.vox",
                             hash::n_to_str(hash::compute_n(palette_mapping.materials_as_ref()))
                         ),
-                    ))
+                    ));
                 } else {
                     eprintln!("could not get palette mapping for {}", shape.palette);
                 }
@@ -147,7 +147,7 @@ impl WriteEntityContext<'_, &mut File> {
                 compound = true;
             }
         } else {
-            eprintln!("could not get entity voxels for {}", entity.handle)
+            eprintln!("could not get entity voxels for {}", entity.handle);
         }
         (if compound { "compound" } else { "vox" }, kind_attrs)
     }
