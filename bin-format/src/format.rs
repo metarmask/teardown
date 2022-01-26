@@ -10,6 +10,7 @@ use std::{
 };
 
 use approx::{AbsDiffEq, RelativeEq};
+use enumflags2::{bitflags, BitFlags};
 use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
@@ -334,7 +335,8 @@ pub struct Exhaust {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Vehicle<'a> {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub body_handle: u32,
     pub transform: Transform,
     pub velocity: [f32; 3],
@@ -413,7 +415,8 @@ pub struct VehicleSound<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Water {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub depth: f32,
     pub wave: f32,
@@ -481,7 +484,8 @@ impl<'a> ::core::fmt::Display for Palette<'a> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Script<'a> {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub path: &'a str,
     pub params: Registry<'a>,
     pub last_update: f32,
@@ -592,7 +596,8 @@ pub use environment::Environment;
 
 #[derive(Debug, Clone, Parse)]
 pub struct Trigger<'a> {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub type_: TriggerGeometryKind,
     pub sphere_radius: f32,
@@ -619,19 +624,48 @@ pub enum TriggerGeometryKind {
     Polygon = 3,
 }
 
+#[bitflags]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(u16)]
+pub enum Flags { // Broken, JointedToStatic, Active, Dynamic, Light active
+         Tagged = 0b_0000_0000_0000_0001,
+    InheritTags = 0b_0000_0000_0000_0010,
+    Unbreakable = 0b_0000_0000_0000_0100,
+         NoCull = 0b_0000_0000_0000_1000,
+             F4 = 0b_0000_0000_0001_0000,
+             F5 = 0b_0000_0000_0010_0000,
+             F6 = 0b_0000_0000_0100_0000,
+             F7 = 0b_0000_0000_1000_0000,
+             F8 = 0b_0000_0001_0000_0000,
+             F9 = 0b_0000_0010_0000_0000,
+            F10 = 0b_0000_0100_0000_0000,
+            F11 = 0b_0000_1000_0000_0000,
+            F12 = 0b_0001_0000_0000_0000,
+            F13 = 0b_0010_0000_0000_0000,
+            F14 = 0b_0100_0000_0000_0000,
+            F15 = 0b_1000_0000_0000_0000,
+}
+
+fn parse_bitflags<'p, 'a>(parser: &'a mut Parser<'p>) -> Result<BitFlags<Flags>, ParseError<'p>>
+where 'p: 'a {
+    Ok(BitFlags::from_bits_truncate(parser.parse()?))
+}
+
 #[derive(Debug, Clone, Parse)]
 pub struct Body {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub entity_flags: BitFlags<Flags>,
     pub transform: Transform,
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
     pub dynamic: bool,
-    pub flags: u8,
+    pub body_flags: u8,
 }
 
 #[derive(Debug, Clone, Parse)]
 pub struct Wheel {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub vehicle: u32,
     pub vehicle_body: u32,
     pub body: u32,
@@ -678,7 +712,8 @@ impl<'p> Parse<'p> for Registry<'p> {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Location {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
 }
 
@@ -865,7 +900,8 @@ pub enum ScriptSoundKind {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Screen<'a> {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub size: [f32; 2],
     pub bulge: f32,
@@ -1015,7 +1051,8 @@ impl RelativeEq for Transform {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Shape<'a> {
-    pub z_u8_start: u8,
+    #[structr(parse = "parse_bitflags(parser)")]
+    pub flags: BitFlags<Flags>,
     pub transform: Transform,
     pub z_u8_4: [u8; 4],
     pub density: f32,
