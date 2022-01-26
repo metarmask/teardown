@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, fs::File, io::Write};
 
-use nalgebra::{Isometry3, Point3, Rotation3, UnitQuaternion};
+use nalgebra::{Isometry3, Point3, Rotation3};
 use quick_xml::{
     events::{BytesStart, Event},
     Writer,

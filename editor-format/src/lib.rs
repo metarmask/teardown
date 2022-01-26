@@ -20,7 +20,7 @@ use std::{
 use ::vox::semantic::SemanticError as VoxError;
 use anyhow::Result;
 use derive_builder::Builder;
-use nalgebra::{Isometry3, Point3, Quaternion, Rotation, Rotation3, UnitQuaternion};
+use nalgebra::{Isometry3, Point3, Quaternion, Rotation3, UnitQuaternion};
 pub(crate) use quick_xml::Result as XMLResult;
 use quick_xml::{
     events::{BytesStart, Event},
