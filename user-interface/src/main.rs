@@ -205,6 +205,7 @@ pub(crate) fn load_level_meta() -> Result<GameLuaMeta> {
 
 #[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
+    std::env::set_var("RUST_BACKTRACE", "1");
     let args = Options::from_args();
     let command = if let Some(command) = args.command {
         command
