@@ -3,8 +3,6 @@ macro_rules! test_file {
         $(
             #[test]
             fn $file() {
-                // To see tests that fail when they allocate too much.
-                println!("doing {}", stringify!($file));
                 teardown_bin_format::parse_file("../example-input/bin/".to_owned() + stringify!($file) + ".bin").unwrap();
             }
         )*

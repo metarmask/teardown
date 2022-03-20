@@ -159,7 +159,7 @@ impl Level {
                         Err(error) => {
                             // Let this be caught by Main
                             return Command::perform(
-                                async move { LevelMessage::Error(Arc::new(anyhow::Error::msg(error))) },
+                                async move { LevelMessage::Error(Arc::new(error)) },
                                 |level_message| level_message,
                             )
                         }

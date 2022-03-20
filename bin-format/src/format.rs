@@ -15,7 +15,7 @@ use num_traits::PrimInt;
 use structr::{Parse, ParseError, ParseErrorKind, Parser};
 
 #[allow(dead_code)] // Used by macro
-const VERSION: [u8; 3] = [0, 9, 2];
+const VERSION: [u8; 3] = [0, 9, 5];
 
 #[derive(Debug, Clone, Parse)]
 pub struct Scene<'a> {
@@ -119,6 +119,7 @@ pub mod joint {
         pub z_f32_2_hinge: [f32; 2],
         pub size: f32,
         pub z_u8: u8,
+        pub z2_u8: u8,
         pub z_u32_2: [[u8; 4]; 2],
         #[structr(
             parse = "Ok(if kind == JointKind::Rope { Some(parser.parse()?) } else { None })"
