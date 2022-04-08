@@ -271,13 +271,12 @@ fn kind_variant_from_byte<'p>(byte: u8) -> Result<EntityKindVariants, ParseError
         3 => Kind::Light,
         4 => Kind::Location,
         5 => Kind::Water,
-        // 6?
-        7 => Kind::Joint,
-        8 => Kind::Vehicle,
-        9 => Kind::Wheel,
-        10 => Kind::Screen,
-        11 => Kind::Trigger,
-        12 => Kind::Script,
+        6 => Kind::Joint,
+        7 => Kind::Vehicle,
+        8 => Kind::Wheel,
+        9 => Kind::Screen,
+        10 => Kind::Trigger,
+        11 => Kind::Script,
         _ => return Err(Parser::error(ParseErrorKind::NoReprIntMatch(byte.into())))
     })
 }
