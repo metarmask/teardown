@@ -773,7 +773,7 @@ impl fmt::Debug for Rgb {
 
 #[derive(Debug, Clone, Parse)]
 pub struct Player {
-    pub z_i32_3: [i32; 3],
+    pub z_i32_4: [i32; 4],
     pub z_f32: [f32; 8],
     pub transform: Transform,
     pub yaw: f32,
